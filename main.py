@@ -21,45 +21,39 @@ def health_check():
 
 @app.route('/process_video', methods=['POST'])
 def process_video():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
 
-  if not link:
-    raise BadRequestError("Link must be provided")
+    link = data.get('youtube_url')
+    if not link:
+        return jsonify({"error": "URL is required."}), 400
 
-  youtubeRegex = r"^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})$"
-  # Use request.get_json() to correctly parse the JSON payload
-  data = request.get_json()
-  # print(data)
-  if not data:
-      return jsonify({"error": "No data sent"}), 400
-    
-  try:
-
+    youtubeRegex = r"^(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})$"
     match = re.match(youtubeRegex, link)
-    if match:  # If it's a YouTube link
-
-  
-      youtube_url = data.get('youtube_url')
-      if not youtube_url:
-          return jsonify({"error": "YouTube URL is required."}), 400
-  
-      # Extract the YouTube video ID from the URL
-      video_id = extract_video_id(youtube_url)
-      if not video_id:
-          return jsonify({"error": "Invalid YouTube URL."}), 400
-  
-      try:
-          transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
-          content = ' '.join([item['text'] for item in transcript_list])
-      except TranscriptsDisabled:
-          return jsonify({"error": "Transcripts are disabled for this video."}), 400
-      except NoTranscriptFound:
-          return jsonify({"error": "No transcript found for this video."}), 404
+    
+    if match:
+        # Process YouTube link
+        video_id = match.group(1)  # Extract the video ID from the regex match
+        try:
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            content = ' '.join([item['text'] for item in transcript_list])
+            return jsonify({"content": content, "source": "YouTube"}), 200
+        except TranscriptsDisabled:
+            return jsonify({"error": "Transcripts are disabled for this video."}), 400
+        except NoTranscriptFound:
+            return jsonify({"error": "No transcript found for this video."}), 404
     else:
-      resp = requests.get(link)
-      soup = BeautifulSoup(resp.text, 'html.parser')
-      title = soup.title.text if soup.title else "No Title Found"
-      paragraphs = soup.find_all('p')
-      content = "\n".join([paragraph.text for paragraph in paragraphs])
+        # Process general web link
+        try:
+            resp = requests.get(link)
+            soup = BeautifulSoup(resp.content, 'html.parser')
+            title = soup.title.text if soup.title else "No Title Found"
+            paragraphs = soup.find_all('p')
+            content = "\n".join([paragraph.text for paragraph in paragraphs])
+            return jsonify({"content": content, "title": title, "source": "Web"}), 200
+        except Exception as e:
+            return jsonify({"error": "Failed to scrape the web page: " + str(e)}), 400
   
 
 
