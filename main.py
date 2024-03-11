@@ -7,35 +7,36 @@ from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFoun
 import os
 import openai
 import re
-from prompts import structured_prompt
+from prompts import structured_prompt, merge_prompt
 from transcribe import youtube_transcriber
+import concurrent.futures # for parallel calls
+
 
 
 #import requests
 #from bs4 import BeautifulSoup
-
+#two APi's ready to go:
 OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
+OPENAI_API_SECRET_2 = os.environ['OPENAI_API_SECRET_2']
+max_chunk_length=25000
+
+#two models ready to go: 
 Model3=os.environ['Model3']
 Model4 =os.environ['Model4']
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
-
+client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
 app = Flask(__name__)
 app.register_blueprint(youtube_transcriber)
 CORS(app)
 
 
+
+
 def split_text_with_overlap(text, max_length=25000, overlap=150):
     """
     Splits the text into chunks with a maximum length of max_length, including an overlap between chunks.
-    
-    Parameters:
-    - text (str): The input text to split.
-    - max_length (int): The maximum length of each chunk.
-    - overlap (int): The number of characters to overlap between consecutive chunks.
-    
-    Returns:
-    - List[str]: A list of text chunks with specified overlap.
-    """
+"""    
+  
     chunks = []
     current_start = 0
 
@@ -55,33 +56,7 @@ def split_text_with_overlap(text, max_length=25000, overlap=150):
 
 
 
-def merge_responses(responses):
-  """
-  Merges multiple response objects into a single response object.
-  """
-  merged_response = {
-      "summary": "",
-      "actionable_advice": {},
-      "sentiment_analysis": "",
-      "reliability_score": "",
-      "political_leaning": ""
-  }
-
-  for response in responses:
-    merged_response["summary"] += response["summary"] + " "
-    for category, advice_list in response["actionable_advice"].items():
-      if category not in merged_response["actionable_advice"]:
-        merged_response["actionable_advice"][category] = []
-      merged_response["actionable_advice"][category].extend(advice_list)
-    # For simplicity, we concatenate sentiment, reliability, and leaning.
-    # This logic may need refinement based on your specific requirements.
-    merged_response[
-        "sentiment_analysis"] += response["sentiment_analysis"] + " "
-    merged_response["reliability_score"] += response["reliability_score"] + " "
-    merged_response["political_leaning"] += response["political_leaning"] + " "
-
-  return merged_response
-
+#initial call:
 def call_openai_api(structured_prompt, apimodel):
 
   try:
@@ -95,7 +70,11 @@ def call_openai_api(structured_prompt, apimodel):
                                                 }])
 
     response_contents = completion.choices[0].message.content
-    response_content = response_contents.replace("```json", "").replace("```", "")
+    if response_contents:
+      response_content = response_contents.replace("```json", "").replace("```", "")
+    else:
+      # Raise an exception if response_contents is None or not as expected
+      raise ValueError("response_contents is None or not in the expected format.")
 
     print(response_content)
     if response_content:
@@ -110,6 +89,37 @@ def call_openai_api(structured_prompt, apimodel):
   except Exception as e:
     return jsonify({"error": str(e)}), 500
 
+def merge_chunks(structured_prompt, apimodel):
+  try:
+    completion = client.chat.completions.create(model=apimodel,
+                                                temperature=1,
+                                                messages=[{
+                                                    "role":
+                                                    "system",
+                                                    "content":
+                                                    structured_prompt
+                                                }])
+  
+    response_contents = completion.choices[0].message.content
+    if response_contents:
+      response_content = response_contents.replace("```json", "").replace("```", "")
+    else:
+      # Raise an exception if response_contents is None or not as expected
+      raise ValueError("response_contents is None or not in the expected format.")
+  
+    print(response_content)
+    if response_content:
+      # Directly parse and return the JSON content
+      response_dict = json.loads(
+          response_content)  # This parses the JSON string into a Python dict
+      print(response_dict)
+      return jsonify(response_dict)  # Use the parsed dict here
+    else:
+      return jsonify({"error": "Response content is empty."}), 500
+  
+  except Exception as e:
+    return jsonify({"error": str(e)}), 500
+
 
 
 @app.route('/')
@@ -118,6 +128,7 @@ def health_check():
 
 @app.route('/process_video', methods=['POST'])
 def process_video():
+  answer =''
   # Use request.get_json() to correctly parse the JSON payload
   data = request.get_json()
   print(data)
@@ -134,8 +145,10 @@ def process_video():
     return jsonify({"error": "Invalid YouTube URL."}), 400
 
   try:
+    # Get the transcript for the video
     combined_text = YouTubeTranscriptApi.get_transcript(video_id)
     #combined_text = ' '.join([item['text'] for item in transcript_list])
+    print(combined_text)
     print(len(combined_text))
   except TranscriptsDisabled:
     return jsonify({"error": "Transcripts are disabled for this video."}), 400
@@ -143,15 +156,58 @@ def process_video():
     return jsonify({"error": "No transcript found for this video."}), 404
   #chunks = split_text(combined_text)
   #print(len(chunks))
-
-  combined_texts = f"""Given the folloing Transcript: "{combined_text}" """
+  #create the prompt for initial call
+  combined_texts = f"""Given the following Transcript: "{combined_text}" """
   prompt = structured_prompt + combined_texts
-
+  
+  #determine which model to use:
   if len(combined_text) > 320:
     apimodel = Model4
   else:
     apimodel = Model3
-  answer = call_openai_api(prompt, apimodel)
+
+  
+  if(len(combined_text) > max_chunk_length):
+    chunks = split_text_with_overlap(combined_text, max_chunk_length)
+    print(f"Total chunks: {len(chunks)}")
+
+    # Determine which model to use based on the length of combined_text
+    # Example model selection logic, adjust as needed
+    #apimodel = "Model4" if len(combined_text) > 320 else "Model3"
+    
+    responses = []
+
+    # Use ThreadPoolExecutor to call the API in parallel for each chunk
+    with concurrent.futures.ThreadPoolExecutor() as executor:
+        # Prepare future calls, iterating over chunks this time
+        future_to_chunk = {executor.submit(call_openai_api, chunk, apimodel): chunk for chunk in chunks}
+
+        for future in concurrent.futures.as_completed(future_to_chunk):
+            chunk = future_to_chunk[future]
+            try:
+                response = future.result()
+                responses.append(response)
+            except Exception as exc:
+                print(f'Chunk "{chunk}" generated an exception: {exc}')
+
+    # At this point, `responses` contains the API call results for each chunk
+    print("responses: ")
+    print(responses)
+    responses_str = "\n".join(responses)
+
+    # Concatenate the combined responses with the merge_prompt.
+    # If you need a different format (e.g., JSON), adjust the concatenation logic accordingly.
+    full_prompt = f"{responses_str}\n{merge_prompt}"
+
+    # Now, `full_prompt` contains all responses followed by your merge prompt.
+    print("full_prompt: ")
+    print(full_prompt)
+    
+    answer = merge_chunks(full_prompt, apimodel)
+    
+  else: 
+    answer = call_openai_api(prompt, apimodel)
+
   return answer
 
 
@@ -163,3 +219,11 @@ def extract_video_id(youtube_url):
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=8080)
+
+
+
+
+
+
+
+
