@@ -9,7 +9,11 @@ import openai
 import re
 from prompts import structured_prompt, merge_prompt
 from transcribe import youtube_transcriber
-import concurrent.futures # for parallel calls
+from functions import combine_jsons
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+
+
 
 
 
@@ -32,6 +36,26 @@ CORS(app)
 
 
 
+def call_api_in_parallel(prompts, apimodel, app):
+  responses = []
+  with ThreadPoolExecutor(max_workers=4) as executor:
+      future_to_prompt = {executor.submit(call_openai_api_with_context, prompt, apimodel, app): prompt for prompt in prompts}
+      for future in as_completed(future_to_prompt):
+          try:
+              response = future.result()  # Assume this now returns a dict
+              responses.append(response)
+          except Exception as exc:
+              print(f"API call generated an exception: {exc}")
+  return responses  # Make sure this is defined and returned correctly
+
+def call_openai_api_with_context(prompt, apimodel, app):
+  with app.app_context():
+      # Your existing call_openai_api logic here, assuming it returns a dict or list
+      return call_openai_api(prompt, apimodel)
+
+
+
+
 def split_text_with_overlap(text, max_length=25000, overlap=150):
     """
     Splits the text into chunks with a maximum length of max_length, including an overlap between chunks.
@@ -49,7 +73,6 @@ def split_text_with_overlap(text, max_length=25000, overlap=150):
         
         end_index = min(len(text), current_start + max_length)
         chunks.append(text[start_index:end_index])
-        
         current_start += max_length
     
     return chunks
@@ -58,36 +81,29 @@ def split_text_with_overlap(text, max_length=25000, overlap=150):
 
 #initial call:
 def call_openai_api(structured_prompt, apimodel):
-
   try:
-    completion = client.chat.completions.create(model=apimodel,
-                                                temperature=1,
-                                                messages=[{
-                                                    "role":
-                                                    "system",
-                                                    "content":
-                                                    structured_prompt
-                                                }])
+      completion = client.chat.completions.create(model=apimodel,
+                                                  temperature=1,
+                                                  messages=[{
+                                                      "role": "system",
+                                                      "content": structured_prompt
+                                                  }])
 
-    response_contents = completion.choices[0].message.content
-    if response_contents:
-      response_content = response_contents.replace("```json", "").replace("```", "")
-    else:
-      # Raise an exception if response_contents is None or not as expected
-      raise ValueError("response_contents is None or not in the expected format.")
+      response_contents = completion.choices[0].message.content
+      if response_contents:
+          response_content = response_contents.replace("```json", "").replace("```", "")
+      else:
+          raise ValueError("response_contents is None or not in the expected format.")
 
-    print(response_content)
-    if response_content:
-      # Directly parse and return the JSON content
-      response_dict = json.loads(
-          response_content)  # This parses the JSON string into a Python dict
-      print(response_dict)
-      return jsonify(response_dict)  # Use the parsed dict here
-    else:
-      return jsonify({"error": "Response content is empty."}), 500
+      if response_content:
+          response_dict = json.loads(response_content)
+          return response_dict  # Return a Python dict directly
+      else:
+          return {"error": "Response content is empty."}
 
   except Exception as e:
-    return jsonify({"error": str(e)}), 500
+      return {"error": str(e)}
+
 
 def merge_chunks(structured_prompt, apimodel):
   try:
@@ -145,70 +161,78 @@ def process_video():
     return jsonify({"error": "Invalid YouTube URL."}), 400
 
   try:
-    # Get the transcript for the video
-    combined_text = YouTubeTranscriptApi.get_transcript(video_id)
-    #combined_text = ' '.join([item['text'] for item in transcript_list])
-    print(combined_text)
-    print(len(combined_text))
+      # Get the transcript for the video
+      combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
+    
+      prompt_0 = ""
+      prompt_1 = ""
+      prompt_2 = ""
+      prompt_3 = ""
+    
+      if len(combined_texts) > 900:
+          # Calculate splitting indices for three equal parts
+          first_split_index = len(combined_texts) // 3
+          second_split_index = 2 * len(combined_texts) // 3
+    
+          # Split the JSON data into three parts
+          first_part_json = combined_texts[:first_split_index]
+          second_part_json = combined_texts[first_split_index:second_split_index]
+          third_part_json = combined_texts[second_split_index:]
+          print(len(combined_texts))
+          # Keep as the same type, just remove "duration"
+          combined_text_1 = [{key: value for key, value in item.items() if key != "duration"} for item in first_part_json]
+          print(len(combined_text_1))
+          combined_text_2 = [{key: value for key, value in item.items() if key != "duration"} for item in second_part_json]
+          print(len(combined_text_2))
+          combined_text_3 = [{key: value for key, value in item.items() if key != "duration"} for item in third_part_json]
+          print(len(combined_text_3))
+
+       # f"""Given the folloing Transcript: "{combined_text}" """
+          # Convert list of dictionaries to string representation right before using in the prompt
+          prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """ 
+          prompt_1 = prompt_1 + structured_prompt 
+          prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """ 
+          prompt_2 = prompt_2 + structured_prompt 
+          prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """ 
+          prompt_3 = prompt_3 + structured_prompt 
+      else:
+          # If less than 900, process as a whole and remove "duration"
+          combined_text_0 = [{key: value for key, value in item.items() if key != "duration"} for item in combined_texts]
+    
+          # Convert list of dictionaries to string representation right before using in the prompt
+          prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
+    
   except TranscriptsDisabled:
-    return jsonify({"error": "Transcripts are disabled for this video."}), 400
+      return jsonify({"error": "Transcripts are disabled for this video."}), 400
   except NoTranscriptFound:
-    return jsonify({"error": "No transcript found for this video."}), 404
-  #chunks = split_text(combined_text)
-  #print(len(chunks))
-  #create the prompt for initial call
-  combined_texts = f"""Given the following Transcript: "{combined_text}" """
-  prompt = structured_prompt + combined_texts
+      return jsonify({"error": "No transcript found for this video."}), 404
+
+
   
   #determine which model to use:
-  if len(combined_text) > 320:
+  if len(combined_texts) > 320:
     apimodel = Model4
   else:
     apimodel = Model3
+  answer = {}
+ 
 
+# Check if the entire transcript was short enough to not require splitting
+  if len(prompt_0) > 0:
+      answer = call_openai_api(prompt_0, apimodel)
+  else:
+      # Assuming prompts are split, prepare them for parallel processing
+      prompts = [prompt_1, prompt_2, prompt_3]
+      responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
   
-  if(len(combined_text) > max_chunk_length):
-    chunks = split_text_with_overlap(combined_text, max_chunk_length)
-    print(f"Total chunks: {len(chunks)}")
-
-    # Determine which model to use based on the length of combined_text
-    # Example model selection logic, adjust as needed
-    #apimodel = "Model4" if len(combined_text) > 320 else "Model3"
-    
-    responses = []
-
-    # Use ThreadPoolExecutor to call the API in parallel for each chunk
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Prepare future calls, iterating over chunks this time
-        future_to_chunk = {executor.submit(call_openai_api, chunk, apimodel): chunk for chunk in chunks}
-
-        for future in concurrent.futures.as_completed(future_to_chunk):
-            chunk = future_to_chunk[future]
-            try:
-                response = future.result()
-                responses.append(response)
-            except Exception as exc:
-                print(f'Chunk "{chunk}" generated an exception: {exc}')
-
-    # At this point, `responses` contains the API call results for each chunk
-    print("responses: ")
-    print(responses)
-    responses_str = "\n".join(responses)
-
-    # Concatenate the combined responses with the merge_prompt.
-    # If you need a different format (e.g., JSON), adjust the concatenation logic accordingly.
-    full_prompt = f"{responses_str}\n{merge_prompt}"
-
-    # Now, `full_prompt` contains all responses followed by your merge prompt.
-    print("full_prompt: ")
-    print(full_prompt)
-    
-    answer = merge_chunks(full_prompt, apimodel)
-    
-  else: 
-    answer = call_openai_api(prompt, apimodel)
-
+      # Check if responses are successfully received from all parallel API calls
+      if responses and len(responses) == 3:
+          answer_1, answer_2, answer_3 = responses
+          answer = combine_jsons(answer_1, answer_2, answer_3)  # Assume combine_jsons can handle three inputs
+      else:
+          answer = {"error": "Failed to get responses from API calls."}
   return answer
+
 
 
 def extract_video_id(youtube_url):

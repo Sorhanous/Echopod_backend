@@ -556,7 +556,6 @@ and read all the text from all the arrays to get the transcript and generate a s
 -K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
 """
 
-
 structured_business_prompt = f"""
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
 
@@ -716,7 +715,6 @@ and read all the text from all the arrays to get the transcript and generate a s
 -K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
 """
 
-
 structured_self_help_prompt = f"""
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
 
@@ -798,7 +796,6 @@ and read all the text from all the arrays to get the transcript and generate a s
 -K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
 """
 
-
 structured_other_prompt = f"""
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
 
@@ -879,7 +876,6 @@ and read all the text from all the arrays to get the transcript and generate a s
 -L: Please always return JSON without any syntax errors.
 -K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
 """
-
 
 structured_crypto_prompt = f"""
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
@@ -1006,9 +1002,6 @@ It doesnt always have to be actionable advice, but all that is mentioned will go
 -K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
   """
 
-
-
-
 merge_prompt = f"""
  You are given a string that is a concatination of multiple jsons, of the same structure (json 1, json2, ...,n). Your task is to merge all the jsons into one json: json 1 + json 2 + ... + n = json final, where the last json has the same structure as the first json: 
 
@@ -1084,7 +1077,7 @@ merge_prompt = f"""
  Lastly, make sure you always only return a json, no explaination or messages before or after it. similar to an APi JSON response 
 
 
-""" 
+"""
 
 Topic = f"""
    Instructions: 
@@ -1118,30 +1111,27 @@ you must return a json with the following format (example here is categry 1):
 
 """
 
-
 structured_prompt = f"""
+
+***, Follow these Instructions:***
+
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
+
+- INTRO: 
+Read the transcript, and make a list of all the names of projects, coins, NFTs, products, and other items mentioned in the transcript. Don't skip any of them. Then group them in categories if you see patterns, for those that don't fit, put them under "Other" category. Even if there are 100 mentions you will return all of them in this fashion. I have provided a json example in this instruction. This is the main point of this API call to you. The rest of the instructions are more details around it: 
 
 To ensure all projects are captured and listed in the mentions section in json, you must return a comprehensive and exhaustive and inclusive list of all mentioned projects, services, or products (i.e. coins in crypto, health products, books, etc) within each category, emphasizing the importance of not missing any mentions. I am seeking detailed analysis similar to what a human expert would provide. Please ensure the analysis is exhaustive and considerate of the context provided, as this will inform significant decisions based on the transcript's content.
 
-I: the video transcript is about a blockchain(s), NFT(s), coins(s), crypto, meme coins, or AI coins, etc. ensure all projects are captured and listed in the mentions section in json, (including total number mentioned). You must return a comprehensive (include ALL) and exhaustive list of ALL mentioned projects, coins, nfts, investments within each category (NFT, meme coins, AI coins, etc), emphasizing the importance of not missing any mentions. 
+The video transcript is about a blockchain(s), NFT(s), coins(s), crypto, meme coins, or AI coins, etc. ensure all projects are captured and liste. You must return a comprehensive (include ALL) and exhaustive list of ALL mentioned projects, nfts, investments within each category (NFT, meme coins, AI coins, game coins, etc), emphasizing the importance of not missing any mentions in the transcript when you return. 
 
-Some videos(transcripts) will have 100 + mentions. I am seeking detailed analysis similar to what a human expert would provide. Please ensure the analysis is exhaustive and considerate of the context provided, as this will inform significant decisions based on the transcript's content. For any name you mention, feel free to add more useful facts you know about the crypto or project. 
 
 -E: The transcript given to you is in the following format, Analyze the following:
 
 {{
-  "content": [
-      {{
-          "duration": 2.074,
-          "start": 0.33,
-          "text": "You absolute piece of."
-      }},
-      {{
-          "duration": 1.678,
-          "start": 2.405,
-          "text": "Yes, I'm gonna give you exactly what"
-      }}, 
+  [
+  {{"text": "[Music]", "start": 0.17}},
+  {{"text": "okay listen you can laugh as much as you", "start": 0.76}},
+  {{"text": "want about meme coins dog Worf hat the", "start": 2.36}},
       .
       .
       .
@@ -1151,33 +1141,33 @@ Some videos(transcripts) will have 100 + mentions. I am seeking detailed analysi
 
  and read all the text from all the arrays to get the transcript and generate a structured response in JSON format (format is shown below) covering the following points: 
 
+
+- Instruction details: 
 -A: Ensure you provide a comprehensive and exhaustive list of all mentioned crypto projects, services, or products (i.e. coins in crypto, health products, books, tools, important people etc) within each category mentioned, categorized by their respective topics (e.g., meme coin, nft, gaming, gambling, AI, or "other" if no categories apply). It's crucial that you include every mention without omission, as my requirements depend on a complete accounting of these details. My decision-making relies on this information being accurate and all-encompassing. Don't omit any names or mentions of coins products or services. i.e. If 100 are mentioend, return all 100 of them, with a short description mentoend about them in the transcript (see json below). For crypto any investment advice mention them. 
 
--B: also include the "start" time stamp you see for each item and include them in the json format shown below.
-It doesnt always have to be actionable advice, but all that is mentioned will go under that category in the json shown below.
+-B: include the "start" time stamp you see for each item and include them in the json format shown below. For All mentions. 
+
 
 -C: "Summary": Provide a concise summary of the key points discussed - needs to understand the context of the transcript and key points. It needs to make sense without having to research the idea further. make this a paragraph long. 
 
 -D: Detail all actionable advice or mentions given, categorized by topic (or "other" if no categories are appropriate). Include each piece of advice or mention of projects, services, etc., under the corresponding category. again, It's vital that all advice or mentions are captured. Dont include things vague ideas like "the internet" or "the world" or "the world's best" or "the world's worst" or "youtube" or obvious things people already know or large legacy categories like "culture" or "entertainment" or "politics" or "science" or "sports" or "technology" or "health" or "finance" or "education" or "religion" or "art, etc. If its crypto mentions, include all. 
 
 -E: Analyze the overall sentiment of the transcript (the underlying emotion) in one word
--F: Evaluate the reliability of the given advice in the transcript based on your knowledge, noting any misinformation or inaccuracies. give it a score on a scale of 1 to 10, where 1 is the worst (not reliable at all) and 10 is very reliable.
 
--G: Describe the political leaning of the message, if applicable. if none, return null. 
+-F: Evaluate the reliability of the given advice in the transcript based on your knowledge, noting any misinformation or inaccuracies. give it a score on a scale of 1 to 10, where 1 is the worst (not reliable at all) and 10 is very reliable.
 
 -X: Please format your response as follows (make sure the json returned has no syntax issues and the parameters are in order they are shown below) - make sure each item has its own line and not grouped with other items in the same line. each item is one element in the array returned. even if they share the same explaination. 
 
 -Y: For "name", correct misspelling from the transcript if you see fit. In your json dont mention the word transcript instead use "the speaker" or "video", whatever else makes sense. 
-- "total mentioned": there should be as many names in the json as the total mentioned. considering point "D" above. 
-   this parameter is the total sum of all the names you return in the json below. if it doesnt match, you either didnt mention all the items or the total is wrong and you need to fix it.
- -(note: all mentions should not include the items metioned in actionable advice section: remove dupicates especially if they have the same "name" and the same "time stampt". also remove any advice that is too vague and broad and not useful to listeners)
 
--Z: category could be meme, ai , game, etc. what every you see fit for crypto.
+ -all mentions should not include the items metioned in actionable advice section: remove dupicates especially if they have the same "name" and the same "time stampt". also remove any advice that is too vague and broad and not useful to listeners
+
+-Z: category could be meme, ai , game, etc. what every you see fit for crypto. For reliability score always return as integer not string
+
 -W: Json structure/format - the parameter order needs to match exactly as below:
 
 {{
-  "summary": "summary of the transcript (context is needed here)",
-  "total mentioned" : "return an integer of the total number of coins, nfts, project names mentioned in the video transcript. Should match the number of "names" you return in the json. exclude broad categories like "the internet" or "the world" or "the world's best" or "the world's worst and refer to instruction "D" above",
+  "summary": "This video talks about (context is needed here)",
   "all mentions": {{
     "<category 1>": [
       {{
@@ -1247,17 +1237,107 @@ It doesnt always have to be actionable advice, but all that is mentioned will go
   }},
   "sentiment_analysis": "The overall sentiment is...or null if none"",
   "reliability_score": "The reliability of the advice is...or null if none"",
-  "political_leaning": "The political leaning is... or null if none
 }}
 
 
 -L: Please always return Json without any syntax errors.
 -O: return null, for parameters that are not applicable.
--E: Make sure "all actionable advices" and "all mentions" don't share duplicates. none of the time stampts should be the same. and what is mentioned in "all mentions" should not be mentioned in "all actionable advices".
--Q: this is important: make sure the json is returned sorted based on the start time, from the earliest to the latest.
--K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT LIKE an API would.***
-
--R: First letter of every value in every Parameter neeeds to be capitalized.
-
+-K: ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS BEFORE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT 
+LIKE an API would.***
   """
 
+structured_promptss = f"""
+
+***Instructions for Processing Transcript Data***
+***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
+Analyze the transcript to identify mentions of crypto projects, services, or products, including coins, NFTs, investments, and related topics. Provide a detailed and comprehensive list categorized by type (e.g., meme coins, NFTs, AI coins). Ensure every mention is captured to inform significant decisions based on the content.
+
+- **Content Format**: The transcript is provided in a JSON format with segments containing 'text', 'start', and 'duration'.
+- **Analysis Goals**:
+  1. **Comprehensive Listing**: Enumerate all mentioned projects and services, categorizing them appropriately. Include the start time for each mention.
+  2. **Summary**: Offer a brief summary capturing key points discussed, focusing on context and actionable insights.
+  3. **Sentiment and Reliability**: Assess the overall sentiment and reliability of the advice given, scoring reliability from 1 to 10.
+  4. **Political Leaning**: Note any political leaning, or return null if not applicable.
+
+- **Output Format**: Structure your response as follows, ensuring it's formatted correctly as JSON. Include categories such as meme coins, AI coins, etc., and provide details for each mentioned item, including a brief description and the start time.
+
+Please adhere strictly to JSON output format guidelines, returning a comprehensive analysis that respects the instructions provided. the parameter order needs to match exactly as below:
+
+{{
+  "summary": "summary of the transcript (context is needed here)",
+  "all mentions": {{
+    "<category 1>": [
+      {{
+        "name": " One of the items (item1) in the list of advice or projects in category 1,
+        "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2-3), contextual explanation mentioned in the transcript for item 1 - must have this""
+        "start_time": 38.399
+      }},
+      {{
+        "name": " One of the items (item2) in the list of advice or projects in category 1,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2), contextual  explanation mentioned in the transcript for item 2 - must have this""
+        "start_time": 40
+      }}
+      ...
+    ],
+    "<category 2>": [
+      {{
+        "name": " One of the items (item1) in the list of advice or projects in category 2,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": " an understandable, Full sentences (atleast 2), contextual  explanation mentioned in the transcript for item 1 - must have this""
+        "start_time": 67.5
+      }},
+      {{
+        "name": " One of the items (item2) in the list of advice or projects in category 2,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2), contextual explanation mentioned in the transcript for item 2 - must have this""
+        "start_time": 105
+      }}
+      ...
+    ]
+    ...
+  }},
+  
+  "all actionable advices": {{ 
+    "<category 1>": [
+      {{
+        "name": " One of the items (item1) in the list of advice or projects in category 1,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2), contextual explanation mentioned in the transcript for item 1 - must have this""
+        "start_time": 38.399
+      }},
+      {{
+        "name": " One of the items (item2) in the list of advice or projects in category 1,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2), contextual  explanation mentioned in the transcript for item 2 - must have this""
+        "start_time": 40
+      }}
+      ...
+    ],
+    "<category 2>": [
+      {{
+        "name": " One of the items (item1) in the list of advice or projects in category 2,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": " an understandable, Full sentences (atleast 2), contextual  explanation mentioned in the transcript for item 1 - must have this""
+        "start_time": 67.5
+      }},
+      {{
+        "name": " One of the items (item2) in the list of advice or projects in category 2,
+           "topic": make this a header of 2-5 words summerizing and titling the `description` and it must include the `name`
+        "description": "an understandable, Full sentences (atleast 2), contextual explanation mentioned in the transcript for item 2 - must have this""
+        "start_time": 105
+      }}
+      ...
+    ]
+    ...
+  }},
+  "sentiment_analysis": "One word emotion for the video",
+  "reliability_score": "The reliability of the advice is...or null if none"",
+}}
+
+
+***Exclude empty topics and categories. Do not include any advice or mention of projects, services, or products that are not mentioned in the transcript.**
+***Exclude duplicate topics from the entire json if they exist.***
+***End of Instructions***
+  """
