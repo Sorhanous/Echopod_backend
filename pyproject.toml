@@ -13,6 +13,8 @@ openai = "^1.12.0"
 pydantic-core = "^2.16.3"
 beautifulsoup4 = "^4.12.3"
 requests = "^2.31.0"
+psycopg2-binary = "^2.9.9"
+google-api-python-client = "^2.125.0"
 
 [tool.pyright]
 # https://github.com/microsoft/pyright/blob/main/docs/configuration.md
