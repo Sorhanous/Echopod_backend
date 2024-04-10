@@ -164,135 +164,139 @@ def process_video():
     return jsonify({"error": "Missing required information."}), 400
   # Obtain a database connection
   conn = get_db_connection()
-  user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
-
-  link_data = {
-      'user_id': user_id,
-      'video_url': youtube_url,
-  }
-
-  exists, response = get_or_process_video_link(link_data, get_db_connection())
-
-  if exists:
-    # The YouTube link exists, return the existing summary
-
-    return jsonify(response), 200
-  else:
-
-    try:
-      # Get the transcript for the video
-      combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-
-      prompt_0 = ""
-      prompt_1 = ""
-      prompt_2 = ""
-      prompt_3 = ""
-
-      if len(combined_texts) > 900:
-        # Calculate splitting indices for three equal parts
-        first_split_index = len(combined_texts) // 3
-        second_split_index = 2 * len(combined_texts) // 3
-
-        # Split the JSON data into three parts
-        first_part_json = combined_texts[:first_split_index]
-        second_part_json = combined_texts[first_split_index:second_split_index]
-        third_part_json = combined_texts[second_split_index:]
-        print(len(combined_texts))
-        # Keep as the same type, just remove "duration"
-        combined_text_1 = [{
-            key: value
-            for key, value in item.items() if key != "duration"
-        } for item in first_part_json]
-        print(len(combined_text_1))
-
-        combined_text_2 = [{
-            key: value
-            for key, value in item.items() if key != "duration"
-        } for item in second_part_json]
-        print(len(combined_text_2))
-        combined_text_3 = [{
-            key: value
-            for key, value in item.items() if key != "duration"
-        } for item in third_part_json]
-        print(len(combined_text_3))
-
-        # Process each part to remove "uh", "um", "ah" from "text"
-        combined_text_1 = [{
-            "text": remove_fillers(item["text"]),
-            "start_time": item["start"]
-        } for item in combined_text_1]
-        print(len(combined_text_1))
-        print(combined_text_1)
-        combined_text_2 = [{
-            "text": remove_fillers(item["text"]),
-            "start_time": item["start"]
-        } for item in combined_text_2]
-        print(len(combined_text_2))
-        print(combined_text_2)
-        combined_text_3 = [{
-            "text": remove_fillers(item["text"]),
-            "start_time": item["start"]
-        } for item in combined_text_3]
-        print(len(combined_text_3))
-        print(combined_text_3)
-
-        # f"""Given the folloing Transcript: "{combined_text}" """
-        # Convert list of dictionaries to string representation right before using in the prompt
-        prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """
-        prompt_1 = prompt_1 + structured_prompt
-        prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """
-        prompt_2 = prompt_2 + structured_prompt
-        prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """
-        prompt_3 = prompt_3 + structured_prompt
-      else:
-        # If less than 900, process as a whole and remove "duration"
-        combined_text_0 = [{
-            key: value
-            for key, value in item.items() if key != "duration"
-        } for item in combined_texts]
-
-        # Convert list of dictionaries to string representation right before using in the prompt
-        prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
-
-    except TranscriptsDisabled:
-      return jsonify({"error":
-                      "Transcripts are disabled for this video."}), 400
-    except NoTranscriptFound:
-      return jsonify({"error": "No transcript found for this video."}), 404
-
-    #determine which model to use:
-    if len(combined_texts) > 320:
-      apimodel = Model4
+  try:
+      
+    user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
+  
+    link_data = {
+        'user_id': user_id,
+        'video_url': youtube_url,
+    }
+  
+    exists, response = get_or_process_video_link(link_data, conn)
+  
+    if exists:
+      # The YouTube link exists, return the existing summary
+  
+      return jsonify(response), 200
     else:
-      apimodel = Model3
-    answer = {}
-
-    # Check if the entire transcript was short enough to not require splitting
-    if len(prompt_0) > 0:
-      answer = call_openai_api(prompt_0, apimodel)
-    else:
-      # Assuming prompts are split, prepare them for parallel processing
-      prompts = [prompt_1, prompt_2, prompt_3]
-      responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
-
-      # Check if responses are successfully received from all parallel API calls
-      if responses and len(responses) == 3:
-        answer_1, answer_2, answer_3 = responses
-        answer = combine_jsons(
-            answer_1, answer_2,
-            answer_3)  # Assume combine_jsons can handle three inputs
+  
+      try:
+        # Get the transcript for the video
+        combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
+  
+        prompt_0 = ""
+        prompt_1 = ""
+        prompt_2 = ""
+        prompt_3 = ""
+  
+        if len(combined_texts) > 900:
+          # Calculate splitting indices for three equal parts
+          first_split_index = len(combined_texts) // 3
+          second_split_index = 2 * len(combined_texts) // 3
+  
+          # Split the JSON data into three parts
+          first_part_json = combined_texts[:first_split_index]
+          second_part_json = combined_texts[first_split_index:second_split_index]
+          third_part_json = combined_texts[second_split_index:]
+          print(len(combined_texts))
+          # Keep as the same type, just remove "duration"
+          combined_text_1 = [{
+              key: value
+              for key, value in item.items() if key != "duration"
+          } for item in first_part_json]
+          print(len(combined_text_1))
+  
+          combined_text_2 = [{
+              key: value
+              for key, value in item.items() if key != "duration"
+          } for item in second_part_json]
+          print(len(combined_text_2))
+          combined_text_3 = [{
+              key: value
+              for key, value in item.items() if key != "duration"
+          } for item in third_part_json]
+          print(len(combined_text_3))
+  
+          # Process each part to remove "uh", "um", "ah" from "text"
+          combined_text_1 = [{
+              "text": remove_fillers(item["text"]),
+              "start_time": item["start"]
+          } for item in combined_text_1]
+          print(len(combined_text_1))
+          print(combined_text_1)
+          combined_text_2 = [{
+              "text": remove_fillers(item["text"]),
+              "start_time": item["start"]
+          } for item in combined_text_2]
+          print(len(combined_text_2))
+          print(combined_text_2)
+          combined_text_3 = [{
+              "text": remove_fillers(item["text"]),
+              "start_time": item["start"]
+          } for item in combined_text_3]
+          print(len(combined_text_3))
+          print(combined_text_3)
+  
+          # f"""Given the folloing Transcript: "{combined_text}" """
+          # Convert list of dictionaries to string representation right before using in the prompt
+          prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """
+          prompt_1 = prompt_1 + structured_prompt
+          prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """
+          prompt_2 = prompt_2 + structured_prompt
+          prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """
+          prompt_3 = prompt_3 + structured_prompt
+        else:
+          # If less than 900, process as a whole and remove "duration"
+          combined_text_0 = [{
+              key: value
+              for key, value in item.items() if key != "duration"
+          } for item in combined_texts]
+  
+          # Convert list of dictionaries to string representation right before using in the prompt
+          prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
+  
+      except TranscriptsDisabled:
+        return jsonify({"error":
+                        "Transcripts are disabled for this video."}), 400
+      except NoTranscriptFound:
+        return jsonify({"error": "No transcript found for this video."}), 404
+  
+      #determine which model to use:
+      if len(combined_texts) > 320:
+        apimodel = Model4
       else:
-        answer = {"error": "Failed to get responses from API calls."}
-
-  _, db_status = store_youtube_link_data(
-      firebase_uid, youtube_url,
-      json.dumps(answer) if not isinstance(answer, str) else answer)
-
-  if db_status != 200:
-    # Optionally log the error internally; does not affect the "answer" returned
-    print("Error storing YouTube link data:", db_status)
-  print('answer: ')
-  print(answer)
+        apimodel = Model3
+      answer = {}
+  
+      # Check if the entire transcript was short enough to not require splitting
+      if len(prompt_0) > 0:
+        answer = call_openai_api(prompt_0, apimodel)
+      else:
+        # Assuming prompts are split, prepare them for parallel processing
+        prompts = [prompt_1, prompt_2, prompt_3]
+        responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
+  
+        # Check if responses are successfully received from all parallel API calls
+        if responses and len(responses) == 3:
+          answer_1, answer_2, answer_3 = responses
+          answer = combine_jsons(
+              answer_1, answer_2,
+              answer_3)  # Assume combine_jsons can handle three inputs
+        else:
+          answer = {"error": "Failed to get responses from API calls."}
+  
+    _, db_status = store_youtube_link_data(
+        firebase_uid, youtube_url,
+        json.dumps(answer) if not isinstance(answer, str) else answer)
+  
+    if db_status != 200:
+      # Optionally log the error internally; does not affect the "answer" returned
+      print("Error storing YouTube link data:", db_status)
+    print('answer: ')
+    print(answer)
+  finally: 
+    put_db_connection(conn)
   return answer
 
 
@@ -300,6 +304,24 @@ def extract_video_id(youtube_url):
   reg_exp = r'^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*'
   match = re.match(reg_exp, youtube_url)
   return match.group(7) if match and len(match.group(7)) == 11 else None
+
+
+@app.route('/get_channel_url', methods=['POST'])
+def get_channel_url():
+    data = request.get_json()
+    if 'video_id' not in data:
+        return jsonify({"error": "Missing video ID"}), 400
+
+    video_id = data['video_id']
+    api_key = Youtube_API_KEY
+    try:
+        youtube = build('youtube', 'v3', developerKey=api_key)
+        response = youtube.videos().list(part='snippet', id=video_id).execute()
+        channel_id = response['items'][0]['snippet']['channelId']
+        channel_url = f"https://www.youtube.com/channel/{channel_id}"
+        return jsonify({"channel_id": channel_id, "channel_url": channel_url})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 
 if __name__ == '__main__':
