@@ -1,14 +1,49 @@
 import os
 import psycopg2
 from psycopg2 import pool
+from google.cloud import secretmanager
 
+
+def access_secret_version(secret_id, version_id="latest"):
+    """
+    Access a secret version in Secret Manager.
+
+    Args:
+    project_id: Google Cloud project ID
+    secret_id: ID of the secret to access
+    version_id: version of the secret (default to "latest")
+
+    Returns:
+    Secret value as a string.
+    """
+    project_id = "dynamic-heading-419922"
+    # Create the Secret Manager client.
+    client = secretmanager.SecretManagerServiceClient()
+
+    # Build the resource name of the secret version.
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+
+    # Access the secret version.
+    response = client.access_secret_version(request={"name": name})
+
+    # Return the payload as a string.
+    return response.payload.data.decode("UTF-8")
+
+
+
+
+# Retrieve your database secrets using the 'access_secret_version' function
+db_user = access_secret_version("DB_USER")
+db_password = access_secret_version("DB_PASSWORD")
+db_host = access_secret_version("DB_HOST")
+db_name = access_secret_version("DB_NAME")
 # Initialize the connection pool
 db_pool = pool.SimpleConnectionPool(minconn=1,
                                     maxconn=20,
-                                    user=os.getenv('DB_USER'),
-                                    password='TymJr+B03Dh}NMbfiN5f0l8#2>ub',
-                                    host=os.getenv('DB_HOST'),
-                                    dbname=os.getenv('DB_NAME'))
+                                    user=db_user,
+                                    password=db_password,
+                                    host=db_host,
+                                    dbname=db_name)
 
 
 def get_db_connection():

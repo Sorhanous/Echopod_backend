@@ -7,30 +7,64 @@ from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFoun
 import os
 import openai
 import re
+from google.cloud import secretmanager
+from dotenv import load_dotenv
 from prompts import structured_prompt
 from transcribe import youtube_transcriber
 from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
-
 from database import get_db_connection, put_db_connection, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 
-#import requests
-#from bs4 import BeautifulSoup
-#two APi's ready to go:
-OPENAI_API_KEY = os.environ['OPENAI_API_KEY']
-OPENAI_API_SECRET_2 = os.environ['OPENAI_API_SECRET_2']
-max_chunk_length = 25000
 
-#two models ready to go:
-Model3 = os.environ['Model3']
-Model4 = os.environ['Model4']
-Youtube_API_KEY = os.environ['Youtube_API_KEY']
+
+
+
+def access_secret_version(secret_id, version_id="latest"):
+    """
+    Access a secret version in Secret Manager.
+
+    Args:
+    project_id: Google Cloud project ID
+    secret_id: ID of the secret to access
+    version_id: version of the secret (default to "latest")
+
+    Returns:
+    Secret value as a string.
+    """
+    project_id = "dynamic-heading-419922"
+    # Create the Secret Manager client.
+    client = secretmanager.SecretManagerServiceClient()
+
+    # Build the resource name of the secret version.
+    name = f"projects/{project_id}/secrets/{secret_id}/versions/{version_id}"
+
+    # Access the secret version.
+    response = client.access_secret_version(request={"name": name})
+
+    # Return the payload as a string.
+    return response.payload.data.decode("UTF-8")
+
+
+
+# Example: Retrieving and setting the OPENAI_API_KEY
+
+OPENAI_API_KEY = access_secret_version("OPENAI_API_KEY")
+print(OPENAI_API_KEY)
+OPENAI_API_SECRET_2 = access_secret_version( "OPENAI_API_SECRET_2")
+print(OPENAI_API_SECRET_2)
+Model3 = access_secret_version( "Model3")
+Model4 = access_secret_version( "Model4")
+Youtube_API_KEY = access_secret_version("Youtube_API_KEY")
+
+max_chunk_length = 25000
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
 app = Flask(__name__)
 app.register_blueprint(youtube_transcriber)
-CORS(app)
+#CORS(app)
+#CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "https://dynamic-heading-419922.web.app", "https://bevi.ai", "https://dynamic-heading-419922.firebaseapp.com/"]}})  # Add other origins as needed
+# Add other origins as needed
 
 
 def call_api_in_parallel(prompts, apimodel, app):
@@ -51,6 +85,7 @@ def call_api_in_parallel(prompts, apimodel, app):
 
 
 def call_openai_api_with_context(prompt, apimodel, app):
+  print('Made it to openai call with context')
   with app.app_context():
     # Your existing call_openai_api logic here, assuming it returns a dict or list
     return call_openai_api(prompt, apimodel)
@@ -58,6 +93,7 @@ def call_openai_api_with_context(prompt, apimodel, app):
 
 #initial call:
 def call_openai_api(_prompt, apimodel):
+  print('Made it to openai call for long videos')
   try:
     completion = client.chat.completions.create(model=apimodel,
                                                 temperature=1,
@@ -117,7 +153,7 @@ def store_user():
   return jsonify(response_message), status_code
 
 
-@app.route('/get_channel_id', methods=['POST'])
+@app.route('/api/get_channel_id', methods=['POST'])
 def get_channel_id():
   data = request.get_json()
   if 'video_id' not in data:
@@ -134,7 +170,7 @@ def get_channel_id():
     return jsonify({"error": str(e)}), 500
 
 
-@app.route('/process_video', methods=['POST'])
+@app.route('/api/process_video', methods=['POST'])
 def process_video():
   answer = ''
   # Use request.get_json() to correctly parse the JSON payload
@@ -266,7 +302,7 @@ def process_video():
       if len(combined_texts) > 320:
         apimodel = Model4
       else:
-        apimodel = Model3
+        apimodel = Model4
       answer = {}
   
       # Check if the entire transcript was short enough to not require splitting
@@ -274,6 +310,7 @@ def process_video():
         answer = call_openai_api(prompt_0, apimodel)
       else:
         # Assuming prompts are split, prepare them for parallel processing
+        print('Made it here now')
         prompts = [prompt_1, prompt_2, prompt_3]
         responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
   
@@ -306,7 +343,7 @@ def extract_video_id(youtube_url):
   return match.group(7) if match and len(match.group(7)) == 11 else None
 
 
-@app.route('/get_channel_url', methods=['POST'])
+@app.route('/api/get_channel_url', methods=['POST'])
 def get_channel_url():
     data = request.get_json()
     if 'video_id' not in data:
@@ -323,6 +360,7 @@ def get_channel_url():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+CORS(app, resources={r"/api/*": {"origins": "*"}}) 
 
 if __name__ == '__main__':
   app.run(host='0.0.0.0', port=8080)
