@@ -1,8 +1,8 @@
 def combine_jsons(json1, json2, json3):
   # Combine summaries with specified transitions
-  print(json1)
-  print(json2)
-  print(json3)
+  #print(json1)
+  #print(json2)
+  #print(json3)
   
   summaries = []
   combined_summary = ''
@@ -80,8 +80,8 @@ def combine_jsons(json1, json2, json3):
   all_advices = merge_categories(advices1, advices2, advices3)
   if all_advices:
       combined_json['all actionable advices'] = all_advices
-  print('combined_json')
-  print(combined_json)
+  #print('combined_json')
+  #print(combined_json)
   return combined_json
 
 

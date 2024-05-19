@@ -1,4 +1,4 @@
-import os
+import json
 import psycopg2
 from psycopg2 import pool
 from google.cloud import secretmanager
@@ -33,17 +33,18 @@ def access_secret_version(secret_id, version_id="latest"):
 
 
 # Retrieve your database secrets using the 'access_secret_version' function
-db_user = access_secret_version("DB_USER")
-db_password = access_secret_version("DB_PASSWORD")
-db_host = access_secret_version("DB_HOST")
-db_name = access_secret_version("DB_NAME")
+db_user = "postgres"
+db_password = "4J[]FTjbh_Io66gfZb()f4AqQDn~" #4J[]FTjbh_Io66gfZb()f4AqQDn~
+db_host = "localhost"
+db_name = "Bevi_DB"
 # Initialize the connection pool
 db_pool = pool.SimpleConnectionPool(minconn=1,
                                     maxconn=20,
-                                    user=db_user,
-                                    password=db_password,
-                                    host=db_host,
-                                    dbname=db_name)
+                                    user="postgres",
+                                    password="4J[]FTjbh_Io66gfZb()f4AqQDn~",
+                                    host="brevydb.cluster-crg2yo8kmdio.us-west-2.rds.amazonaws.com",
+                                    port=5434,
+                                    dbname="bevi-db")
 
 
 def get_db_connection():
@@ -98,6 +99,11 @@ def upsert_user(user_data, conn):
       cur.execute(upsert_query, user_data)
     conn.commit(
     )  # Ensure the transaction is committed to make changes persistent
+  except psycopg2.IntegrityError as e:  # Catching the IntegrityError which includes unique constraint violations
+      if "users_email_key" in str(e):
+          print("An account with this email already exists.")
+      conn.rollback()  # Rollback the transaction on error
+      raise  
   except psycopg2.DatabaseError as e:
     print(f"Database error: {e}")
     conn.rollback()  # Rollback the transaction on error
@@ -125,7 +131,7 @@ def insert_youtube_link(link_data, conn):
     # Check if the YouTube link already exists for the user
     check_query = """
         SELECT 1 FROM youtubelinks
-        WHERE user_id = %(user_id)s AND video_url = %(video_url)s;
+        WHERE video_url = %(video_url)s;
         """
     cur = conn.cursor()
     cur.execute(check_query, link_data)
@@ -198,7 +204,7 @@ def get_or_process_video_link(link_data, conn):
     # Check if the YouTube link already exists for the user
     check_query = """
       SELECT video_summary_json FROM youtubelinks
-      WHERE user_id = %(user_id)s AND video_url = %(video_url)s;
+      WHERE video_url = %(video_url)s;
       """
     cur = conn.cursor()
     cur.execute(check_query, link_data)

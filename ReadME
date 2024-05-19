@@ -5,7 +5,12 @@ Run Local:
 
 
 Deploy to GCP:
-1. Build: `docker buildx build --platform linux/amd64 -t gcr.io/dynamic-heading-419922/bevi_backend:v1 --load .`
-2. Push: `docker push gcr.io/dynamic-heading-419922/bevi_backend:v1`
-3. Deploy: `gcloud run deploy bevi-backend --image gcr.io/dynamic-heading-419922/bevi_backend:v1 --platform managed --region us-east1 --allow-unauthenticated`
+
+1. Build: `docker buildx build --platform linux/amd64 -t gcr.io/dynamic-heading-419922/bevi_backend:v2 --load .`
+
+2. Push: `docker push gcr.io/dynamic-heading-419922/bevi_backend:v2`
+
+3. Deploy: `gcloud run deploy bevi-backend --image gcr.io/dynamic-heading-419922/bevi_backend:v2 --platform managed --region us-west2 --allow-unauthenticated`
+           `gcloud run deploy bevi-backend --image gcr.io/dynamic-heading-419922/bevi_backend:v2 --platform managed --region us-east1 --allow-unauthenticated`
+
 4. Run:  `gcloud run services list --platform managed`

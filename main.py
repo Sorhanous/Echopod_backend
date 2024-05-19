@@ -49,19 +49,20 @@ def access_secret_version(secret_id, version_id="latest"):
 
 # Example: Retrieving and setting the OPENAI_API_KEY
 
-OPENAI_API_KEY = access_secret_version("OPENAI_API_KEY")
-print(OPENAI_API_KEY)
-OPENAI_API_SECRET_2 = access_secret_version( "OPENAI_API_SECRET_2")
-print(OPENAI_API_SECRET_2)
-Model3 = access_secret_version( "Model3")
-Model4 = access_secret_version( "Model4")
-Youtube_API_KEY = access_secret_version("Youtube_API_KEY")
+OPENAI_API_KEY = "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"
+#print(OPENAI_API_KEY)
+OPENAI_API_SECRET_2 = "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"
+#print(OPENAI_API_SECRET_2)
+Model3 = "gpt-3.5-turbo"
+Model4 = "gpt-4-turbo"
+Youtube_API_KEY = "AIzaSyA9WMQY68FlUq4wc4l8PGxhWBQriW9tfiA"
 
 max_chunk_length = 25000
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
 app = Flask(__name__)
 app.register_blueprint(youtube_transcriber)
+#print(youtube_transcriber)
 #CORS(app)
 #CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "https://dynamic-heading-419922.web.app", "https://bevi.ai", "https://dynamic-heading-419922.firebaseapp.com/"]}})  # Add other origins as needed
 # Add other origins as needed
@@ -85,7 +86,7 @@ def call_api_in_parallel(prompts, apimodel, app):
 
 
 def call_openai_api_with_context(prompt, apimodel, app):
-  print('Made it to openai call with context')
+  #print('Made it to openai call with context')
   with app.app_context():
     # Your existing call_openai_api logic here, assuming it returns a dict or list
     return call_openai_api(prompt, apimodel)
@@ -93,7 +94,7 @@ def call_openai_api_with_context(prompt, apimodel, app):
 
 #initial call:
 def call_openai_api(_prompt, apimodel):
-  print('Made it to openai call for long videos')
+  #print('Made it to openai call for long videos')
   try:
     completion = client.chat.completions.create(model=apimodel,
                                                 temperature=1,
@@ -145,7 +146,7 @@ def store_user():
     response_message = {"message": "User information stored successfully"}
     status_code = 200
   except Exception as e:
-    print(f"Error during upsert: {e}")
+    #print(f"Error during upsert: {e}")
     response_message = {"error": str(e)}
     status_code = 500
   finally:
@@ -175,7 +176,7 @@ def process_video():
   answer = ''
   # Use request.get_json() to correctly parse the JSON payload
   data = request.get_json()
-  print(data)
+  #print(data)
   if not data:
     return jsonify({"error": "No data sent"}), 400
 
@@ -189,8 +190,8 @@ def process_video():
     return jsonify({"error": "Invalid YouTube URL."}), 400
   firebase_uid = data.get('firebase_uid')
   youtube_url = data.get('youtube_url')
-  print(youtube_url)
-  print(firebase_uid)
+  #print(youtube_url)
+  #print(firebase_uid)
   if not firebase_uid:
     return jsonify({"error": "Firebase UID is required."}), 400
   if not youtube_url:
@@ -235,44 +236,44 @@ def process_video():
           first_part_json = combined_texts[:first_split_index]
           second_part_json = combined_texts[first_split_index:second_split_index]
           third_part_json = combined_texts[second_split_index:]
-          print(len(combined_texts))
+          #print(len(combined_texts))
           # Keep as the same type, just remove "duration"
           combined_text_1 = [{
               key: value
               for key, value in item.items() if key != "duration"
           } for item in first_part_json]
-          print(len(combined_text_1))
+          #print(len(combined_text_1))
   
           combined_text_2 = [{
               key: value
               for key, value in item.items() if key != "duration"
           } for item in second_part_json]
-          print(len(combined_text_2))
+          #print(len(combined_text_2))
           combined_text_3 = [{
               key: value
               for key, value in item.items() if key != "duration"
           } for item in third_part_json]
-          print(len(combined_text_3))
+          #print(len(combined_text_3))
   
           # Process each part to remove "uh", "um", "ah" from "text"
           combined_text_1 = [{
               "text": remove_fillers(item["text"]),
               "start_time": item["start"]
           } for item in combined_text_1]
-          print(len(combined_text_1))
-          print(combined_text_1)
+          #print(len(combined_text_1))
+          #print(combined_text_1)
           combined_text_2 = [{
               "text": remove_fillers(item["text"]),
               "start_time": item["start"]
           } for item in combined_text_2]
-          print(len(combined_text_2))
-          print(combined_text_2)
+          #print(len(combined_text_2))
+          #print(combined_text_2)
           combined_text_3 = [{
               "text": remove_fillers(item["text"]),
               "start_time": item["start"]
           } for item in combined_text_3]
-          print(len(combined_text_3))
-          print(combined_text_3)
+          #print(len(combined_text_3))
+          #print(combined_text_3)
   
           # f"""Given the folloing Transcript: "{combined_text}" """
           # Convert list of dictionaries to string representation right before using in the prompt
@@ -310,7 +311,7 @@ def process_video():
         answer = call_openai_api(prompt_0, apimodel)
       else:
         # Assuming prompts are split, prepare them for parallel processing
-        print('Made it here now')
+        #print('Made it here now')
         prompts = [prompt_1, prompt_2, prompt_3]
         responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
   
@@ -330,8 +331,8 @@ def process_video():
     if db_status != 200:
       # Optionally log the error internally; does not affect the "answer" returned
       print("Error storing YouTube link data:", db_status)
-    print('answer: ')
-    print(answer)
+    #print('answer: ')
+    #print(answer)
   finally: 
     put_db_connection(conn)
   return answer
