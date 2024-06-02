@@ -15,10 +15,7 @@ from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from database import get_db_connection, put_db_connection, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
-
-
-
-
+from config import secrets  # Import secrets from config
 
 def access_secret_version(secret_id, version_id="latest"):
     """
@@ -45,304 +42,233 @@ def access_secret_version(secret_id, version_id="latest"):
     # Return the payload as a string.
     return response.payload.data.decode("UTF-8")
 
-
-
-# Example: Retrieving and setting the OPENAI_API_KEY
-
-OPENAI_API_KEY = "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"
-#print(OPENAI_API_KEY)
-OPENAI_API_SECRET_2 = "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"
-#print(OPENAI_API_SECRET_2)
-Model3 = "gpt-3.5-turbo"
-Model4 = "gpt-4-turbo"
-Youtube_API_KEY = "AIzaSyA9WMQY68FlUq4wc4l8PGxhWBQriW9tfiA"
+# Retrieve and set the OPENAI_API_KEY and other secrets
+OPENAI_API_KEY = secrets['OPENAI_API_KEY']
+OPENAI_API_SECRET_2 = secrets['OPENAI_API_SECRET_2']
+Model3 = secrets['Model3']
+Model4 = secrets['Model4']
+Youtube_API_KEY = secrets['Youtube_API_KEY']
 
 max_chunk_length = 25000
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
 app = Flask(__name__)
 app.register_blueprint(youtube_transcriber)
-#print(youtube_transcriber)
-#CORS(app)
-#CORS(app, resources={r"/api/*": {"origins": ["http://localhost:3000", "https://dynamic-heading-419922.web.app", "https://bevi.ai", "https://dynamic-heading-419922.firebaseapp.com/"]}})  # Add other origins as needed
-# Add other origins as needed
-
+CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def call_api_in_parallel(prompts, apimodel, app):
-  responses = []
-  with ThreadPoolExecutor(max_workers=4) as executor:
-    future_to_prompt = {
-        executor.submit(call_openai_api_with_context, prompt, apimodel, app):
-        prompt
-        for prompt in prompts
-    }
-    for future in as_completed(future_to_prompt):
-      try:
-        response = future.result()  # Assume this now returns a dict
-        responses.append(response)
-      except Exception as exc:
-        print(f"API call generated an exception: {exc}")
-  return responses  # Make sure this is defined and returned correctly
-
+    responses = []
+    with ThreadPoolExecutor(max_workers=4) as executor:
+        future_to_prompt = {
+            executor.submit(call_openai_api_with_context, prompt, apimodel, app): prompt
+            for prompt in prompts
+        }
+        for future in as_completed(future_to_prompt):
+            try:
+                response = future.result()  # Assume this now returns a dict
+                responses.append(response)
+            except Exception as exc:
+                print(f"API call generated an exception: {exc}")
+    return responses  # Make sure this is defined and returned correctly
 
 def call_openai_api_with_context(prompt, apimodel, app):
-  #print('Made it to openai call with context')
-  with app.app_context():
-    # Your existing call_openai_api logic here, assuming it returns a dict or list
-    return call_openai_api(prompt, apimodel)
+    with app.app_context():
+        return call_openai_api(prompt, apimodel)
 
-
-#initial call:
+# Initial call:
 def call_openai_api(_prompt, apimodel):
-  #print('Made it to openai call for long videos')
-  try:
-    completion = client.chat.completions.create(model=apimodel,
-                                                temperature=1,
-                                                messages=[{
-                                                    "role": "system",
-                                                    "content": _prompt
-                                                }])
+    try:
+        completion = client.chat.completions.create(model=apimodel,
+                                                    temperature=1,
+                                                    messages=[{
+                                                        "role": "system",
+                                                        "content": _prompt
+                                                    }])
+        response_contents = completion.choices[0].message.content
+        if response_contents:
+            response_content = response_contents.replace("```json", "").replace("```", "")
+        else:
+            raise ValueError("response_contents is None or not in the expected format.")
 
-    response_contents = completion.choices[0].message.content
-    if response_contents:
-      response_content = response_contents.replace("```json",
-                                                   "").replace("```", "")
-    else:
-      raise ValueError(
-          "response_contents is None or not in the expected format.")
-
-    if response_content:
-      response_dict = json.loads(response_content)
-      return response_dict  # Return a Python dict directly
-    else:
-      return {"error": "Response content is empty."}
-
-  except Exception as e:
-    return {"error": str(e)}
-
+        if response_content:
+            response_dict = json.loads(response_content)
+            return response_dict  # Return a Python dict directly
+        else:
+            return {"error": "Response content is empty."}
+    except Exception as e:
+        return {"error": str(e)}
 
 def remove_fillers(text):
-  # Define filler words to be removed
-  fillers = [" uh", " um", " ah", "uh ", " um ", " uh "]
-  for filler in fillers:
-    text = text.replace(filler, " ")
-  return text
-
-
-''' <-------------     ROUTES DEFINED BELOW:     ------------->'''
-
+    fillers = [" uh", " um", " ah", "uh ", " um ", " uh "]
+    for filler in fillers:
+        text = text.replace(filler, " ")
+    return text
 
 @app.route('/')
 def health_check():
-  return 'I am Healthy :)'
-
+    return 'I am Healthy :)'
 
 @app.route('/api/user', methods=['POST'])
 def store_user():
-  user_info = request.get_json()
-  conn = get_db_connection()
-  try:
-    upsert_user(user_info, conn)
-    response_message = {"message": "User information stored successfully"}
-    status_code = 200
-  except Exception as e:
-    #print(f"Error during upsert: {e}")
-    response_message = {"error": str(e)}
-    status_code = 500
-  finally:
-    put_db_connection(conn)
-  return jsonify(response_message), status_code
-
+    user_info = request.get_json()
+    conn = get_db_connection()
+    try:
+        upsert_user(user_info, conn)
+        response_message = {"message": "User information stored successfully"}
+        status_code = 200
+    except Exception as e:
+        response_message = {"error": str(e)}
+        status_code = 500
+    finally:
+        put_db_connection(conn)
+    return jsonify(response_message), status_code
 
 @app.route('/api/get_channel_id', methods=['POST'])
 def get_channel_id():
-  data = request.get_json()
-  if 'video_id' not in data:
-    return jsonify({"error": "Missing video ID"}), 400
+    data = request.get_json()
+    if 'video_id' not in data:
+        return jsonify({"error": "Missing video ID"}), 400
 
-  video_id = data['video_id']
-  api_key = Youtube_API_KEY
-  try:
-    youtube = build('youtube', 'v3', developerKey=api_key)
-    response = youtube.videos().list(part='snippet', id=video_id).execute()
-    channel_id = response['items'][0]['snippet']['channelId']
-    return jsonify({"channel_id": channel_id})
-  except Exception as e:
-    return jsonify({"error": str(e)}), 500
-
+    video_id = data['video_id']
+    api_key = Youtube_API_KEY
+    try:
+        youtube = build('youtube', 'v3', developerKey=api_key)
+        response = youtube.videos().list(part='snippet', id=video_id).execute()
+        channel_id = response['items'][0]['snippet']['channelId']
+        return jsonify({"channel_id": channel_id})
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 @app.route('/api/process_video', methods=['POST'])
 def process_video():
-  answer = ''
-  # Use request.get_json() to correctly parse the JSON payload
-  data = request.get_json()
-  #print(data)
-  if not data:
-    return jsonify({"error": "No data sent"}), 400
+    answer = ''
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
 
-  youtube_url = data.get('youtube_url')
-  if not youtube_url:
-    return jsonify({"error": "YouTube URL is required."}), 400
+    youtube_url = data.get('youtube_url')
+    if not youtube_url:
+        return jsonify({"error": "YouTube URL is required."}), 400
 
-  # Extract the YouTube video ID from the URL
-  video_id = extract_video_id(youtube_url)
-  if not video_id:
-    return jsonify({"error": "Invalid YouTube URL."}), 400
-  firebase_uid = data.get('firebase_uid')
-  youtube_url = data.get('youtube_url')
-  #print(youtube_url)
-  #print(firebase_uid)
-  if not firebase_uid:
-    return jsonify({"error": "Firebase UID is required."}), 400
-  if not youtube_url:
-    return jsonify({"error": "YouTube URL is required."}), 400
+    video_id = extract_video_id(youtube_url)
+    if not video_id:
+        return jsonify({"error": "Invalid YouTube URL."}), 400
+    firebase_uid = data.get('firebase_uid')
+    youtube_url = data.get('youtube_url')
+    if not firebase_uid:
+        return jsonify({"error": "Firebase UID is required."}), 400
+    if not youtube_url:
+        return jsonify({"error": "YouTube URL is required."}), 400
 
-  if not firebase_uid or not youtube_url:
-    return jsonify({"error": "Missing required information."}), 400
-  # Obtain a database connection
-  conn = get_db_connection()
-  try:
-      
-    user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
-  
-    link_data = {
-        'user_id': user_id,
-        'video_url': youtube_url,
-    }
-  
-    exists, response = get_or_process_video_link(link_data, conn)
-  
-    if exists:
-      # The YouTube link exists, return the existing summary
-  
-      return jsonify(response), 200
-    else:
-  
-      try:
-        # Get the transcript for the video
-        combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-  
-        prompt_0 = ""
-        prompt_1 = ""
-        prompt_2 = ""
-        prompt_3 = ""
-  
-        if len(combined_texts) > 900:
-          # Calculate splitting indices for three equal parts
-          first_split_index = len(combined_texts) // 3
-          second_split_index = 2 * len(combined_texts) // 3
-  
-          # Split the JSON data into three parts
-          first_part_json = combined_texts[:first_split_index]
-          second_part_json = combined_texts[first_split_index:second_split_index]
-          third_part_json = combined_texts[second_split_index:]
-          #print(len(combined_texts))
-          # Keep as the same type, just remove "duration"
-          combined_text_1 = [{
-              key: value
-              for key, value in item.items() if key != "duration"
-          } for item in first_part_json]
-          #print(len(combined_text_1))
-  
-          combined_text_2 = [{
-              key: value
-              for key, value in item.items() if key != "duration"
-          } for item in second_part_json]
-          #print(len(combined_text_2))
-          combined_text_3 = [{
-              key: value
-              for key, value in item.items() if key != "duration"
-          } for item in third_part_json]
-          #print(len(combined_text_3))
-  
-          # Process each part to remove "uh", "um", "ah" from "text"
-          combined_text_1 = [{
-              "text": remove_fillers(item["text"]),
-              "start_time": item["start"]
-          } for item in combined_text_1]
-          #print(len(combined_text_1))
-          #print(combined_text_1)
-          combined_text_2 = [{
-              "text": remove_fillers(item["text"]),
-              "start_time": item["start"]
-          } for item in combined_text_2]
-          #print(len(combined_text_2))
-          #print(combined_text_2)
-          combined_text_3 = [{
-              "text": remove_fillers(item["text"]),
-              "start_time": item["start"]
-          } for item in combined_text_3]
-          #print(len(combined_text_3))
-          #print(combined_text_3)
-  
-          # f"""Given the folloing Transcript: "{combined_text}" """
-          # Convert list of dictionaries to string representation right before using in the prompt
-          prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """
-          prompt_1 = prompt_1 + structured_prompt
-          prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """
-          prompt_2 = prompt_2 + structured_prompt
-          prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """
-          prompt_3 = prompt_3 + structured_prompt
+    if not firebase_uid or not youtube_url:
+        return jsonify({"error": "Missing required information."}), 400
+    conn = get_db_connection()
+    try:
+        user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
+        link_data = {
+            'user_id': user_id,
+            'video_url': youtube_url,
+        }
+
+        exists, response = get_or_process_video_link(link_data, conn)
+        if exists:
+            return jsonify(response), 200
         else:
-          # If less than 900, process as a whole and remove "duration"
-          combined_text_0 = [{
-              key: value
-              for key, value in item.items() if key != "duration"
-          } for item in combined_texts]
-  
-          # Convert list of dictionaries to string representation right before using in the prompt
-          prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
-  
-      except TranscriptsDisabled:
-        return jsonify({"error":
-                        "Transcripts are disabled for this video."}), 400
-      except NoTranscriptFound:
-        return jsonify({"error": "No transcript found for this video."}), 404
-  
-      #determine which model to use:
-      if len(combined_texts) > 320:
-        apimodel = Model4
-      else:
-        apimodel = Model4
-      answer = {}
-  
-      # Check if the entire transcript was short enough to not require splitting
-      if len(prompt_0) > 0:
-        answer = call_openai_api(prompt_0, apimodel)
-      else:
-        # Assuming prompts are split, prepare them for parallel processing
-        #print('Made it here now')
-        prompts = [prompt_1, prompt_2, prompt_3]
-        responses = call_api_in_parallel(prompts, apimodel, app)  # Pass app here
-  
-        # Check if responses are successfully received from all parallel API calls
-        if responses and len(responses) == 3:
-          answer_1, answer_2, answer_3 = responses
-          answer = combine_jsons(
-              answer_1, answer_2,
-              answer_3)  # Assume combine_jsons can handle three inputs
-        else:
-          answer = {"error": "Failed to get responses from API calls."}
-  
-    _, db_status = store_youtube_link_data(
-        firebase_uid, youtube_url,
-        json.dumps(answer) if not isinstance(answer, str) else answer)
-  
-    if db_status != 200:
-      # Optionally log the error internally; does not affect the "answer" returned
-      print("Error storing YouTube link data:", db_status)
-    #print('answer: ')
-    #print(answer)
-  finally: 
-    put_db_connection(conn)
-  return answer
+            try:
+                combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
 
+                prompt_0 = ""
+                prompt_1 = ""
+                prompt_2 = ""
+                prompt_3 = ""
+
+                if len(combined_texts) > 900:
+                    first_split_index = len(combined_texts) // 3
+                    second_split_index = 2 * len(combined_texts) // 3
+                    first_part_json = combined_texts[:first_split_index]
+                    second_part_json = combined_texts[first_split_index:second_split_index]
+                    third_part_json = combined_texts[second_split_index:]
+
+                    combined_text_1 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in first_part_json]
+
+                    combined_text_2 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in second_part_json]
+
+                    combined_text_3 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in third_part_json]
+
+                    combined_text_1 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_1]
+
+                    combined_text_2 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_2]
+
+                    combined_text_3 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_3]
+
+                    prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """
+                    prompt_1 = prompt_1 + structured_prompt
+                    prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """
+                    prompt_2 = prompt_2 + structured_prompt
+                    prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """
+                    prompt_3 = prompt_3 + structured_prompt
+                else:
+                    combined_text_0 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in combined_texts]
+                    prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
+
+            except TranscriptsDisabled:
+                return jsonify({"error": "Transcripts are disabled for this video."}), 400
+            except NoTranscriptFound:
+                return jsonify({"error": "No transcript found for this video."}), 404
+
+            if len(combined_texts) > 320:
+                apimodel = Model4
+            else:
+                apimodel = Model4
+            answer = {}
+
+            if len(prompt_0) > 0:
+                answer = call_openai_api(prompt_0, apimodel)
+            else:
+                prompts = [prompt_1, prompt_2, prompt_3]
+                responses = call_api_in_parallel(prompts, apimodel, app)
+
+                if responses and len(responses) == 3:
+                    answer_1, answer_2, answer_3 = responses
+                    answer = combine_jsons(answer_1, answer_2, answer_3)
+                else:
+                    answer = {"error": "Failed to get responses from API calls."}
+
+        _, db_status = store_youtube_link_data(
+            firebase_uid, youtube_url,
+            json.dumps(answer) if not isinstance(answer, str) else answer)
+
+        if db_status != 200:
+            print("Error storing YouTube link data:", db_status)
+    finally:
+        put_db_connection(conn)
+    return answer
 
 def extract_video_id(youtube_url):
-  reg_exp = r'^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*'
-  match = re.match(reg_exp, youtube_url)
-  return match.group(7) if match and len(match.group(7)) == 11 else None
-
+    reg_exp = r'^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*'
+    match = re.match(reg_exp, youtube_url)
+    return match.group(7) if match and len(match.group(7)) == 11 else None
 
 @app.route('/api/get_channel_url', methods=['POST'])
 def get_channel_url():
@@ -361,7 +287,5 @@ def get_channel_url():
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-CORS(app, resources={r"/api/*": {"origins": "*"}}) 
-
 if __name__ == '__main__':
-  app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080)
