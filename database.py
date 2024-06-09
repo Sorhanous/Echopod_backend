@@ -8,10 +8,14 @@ import os
 # Load environment variables from .env file
 load_dotenv()
 
-ENV = None
-ENV = os.getenv('ENV')
+# Debugging information to check if .env is loaded correctly
+print("Loaded .env file")
 
-print(ENV)
+ENV = 'e2'
+
+
+print("Environment Variable ENV:", ENV)
+
 if ENV =="e1":
     db_user = "postgres"
     db_password = "newpassword24"
@@ -20,6 +24,7 @@ if ENV =="e1":
     db_port = 5433
     
 else:
+    print("******Production Environment*******")
     db_user = secrets['DB_USER']
     db_password = secrets['DB_PASSWORD']
     db_host = secrets['DB_HOST']

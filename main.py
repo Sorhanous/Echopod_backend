@@ -240,7 +240,7 @@ def process_video():
                 return jsonify({"error": "No transcript found for this video."}), 404
 
 
-            print(combined_texts)
+            #print(combined_texts)
             if len(combined_texts) > 320:
                 apimodel = 'gpt-4o'
             else:
@@ -267,7 +267,7 @@ def process_video():
             print("Error storing YouTube link data:", db_status)
     finally:
         put_db_connection(conn)
-    print(answer)
+    #print(answer)
     return answer
 
 def extract_video_id(youtube_url):
