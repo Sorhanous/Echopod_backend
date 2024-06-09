@@ -151,6 +151,7 @@ def process_video():
         return jsonify({"error": "YouTube URL is required."}), 400
 
     video_id = extract_video_id(youtube_url)
+    #print(video_id)
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL."}), 400
     firebase_uid = data.get('firebase_uid')
@@ -175,6 +176,7 @@ def process_video():
             return jsonify(response), 200
         else:
             try:
+                print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
 
                 prompt_0 = ""
@@ -231,16 +233,18 @@ def process_video():
                         for key, value in item.items() if key != "duration"
                     } for item in combined_texts]
                     prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
-
+           
             except TranscriptsDisabled:
                 return jsonify({"error": "Transcripts are disabled for this video."}), 400
             except NoTranscriptFound:
                 return jsonify({"error": "No transcript found for this video."}), 404
 
+
+            print(combined_texts)
             if len(combined_texts) > 320:
-                apimodel = Model4
+                apimodel = 'gpt-4o'
             else:
-                apimodel = Model4
+                apimodel = 'gpt-4o'
             answer = {}
 
             if len(prompt_0) > 0:
@@ -263,6 +267,7 @@ def process_video():
             print("Error storing YouTube link data:", db_status)
     finally:
         put_db_connection(conn)
+    print(answer)
     return answer
 
 def extract_video_id(youtube_url):

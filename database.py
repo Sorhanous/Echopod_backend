@@ -2,13 +2,35 @@ import json
 import psycopg2
 from psycopg2 import pool
 from config import secrets  # Import secrets from config
+from dotenv import load_dotenv
+import os
 
+# Load environment variables from .env file
+load_dotenv()
+
+ENV = None
+ENV = os.getenv('ENV')
+
+print(ENV)
+if ENV =="e1":
+    db_user = "postgres"
+    db_password = "Shiraz&!&!89"
+    db_host = "localhost"
+    db_name = "Bevi_DB"
+    db_port = 5433
+    
+else:
+    db_user = secrets['DB_USER']
+    db_password = secrets['DB_PASSWORD']
+    db_host = secrets['DB_HOST']
+    db_name = secrets['DB_NAME']
+    db_port = 5432
 # Database connection details
-db_user = secrets['DB_USER']
+"""db_user = secrets['DB_USER']
 db_password = secrets['DB_PASSWORD']
 db_host = secrets['DB_HOST']
 db_name = secrets['DB_NAME']
-db_port = 5432
+db_port = 5432"""
 
 # Initialize the connection pool
 db_pool = pool.SimpleConnectionPool(
@@ -65,10 +87,12 @@ def upsert_user(user_data, conn):
 
 def get_user_id_by_firebase_uid(firebase_uid, conn):
     try:
+        print(f"Firebase UID: {firebase_uid}")
         query = "SELECT user_id FROM users WHERE firebase_uid = %s;"
         with conn.cursor() as cur:
             cur.execute(query, (firebase_uid,))
             user_id = cur.fetchone()
+            print(f"User ID: {user_id}")
         return user_id[0] if user_id else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
@@ -104,6 +128,9 @@ def insert_youtube_link(link_data, conn):
 
 def store_youtube_link_data(firebase_uid, youtube_url, video_summary):
     conn = get_db_connection()
+    print("Connection: ")
+    print(conn)
+
     user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
     if not user_id:
         put_db_connection(conn)
