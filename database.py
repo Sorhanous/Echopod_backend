@@ -14,7 +14,7 @@ ENV = os.getenv('ENV')
 print(ENV)
 if ENV =="e1":
     db_user = "postgres"
-    db_password = "Shiraz&!&!89"
+    db_password = "newpassword24"
     db_host = "localhost"
     db_name = "Bevi_DB"
     db_port = 5433
