@@ -16,6 +16,83 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from database import get_db_connection, put_db_connection, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 from config import secrets  # Import secrets from config
+from create_database import generate_data_store
+import shutil
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.schema import Document
+from langchain_openai import OpenAIEmbeddings
+from langchain_community.vectorstores import Chroma
+from langchain_openai import ChatOpenAI
+from langchain.prompts import ChatPromptTemplate
+
+
+
+
+CHROMA_PATH = "chroma"
+
+PROMPT_TEMPLATE = """
+Answer the question based on the following Video content. 
+This is a transcript from a YouTube video. 
+If what the query is looking for doesn't exist, answer based on your knowledge of the topic
+If the question is seciically from you the AI, answer based on the context of the conversation and your knowledge of the topic. You must distinguish between
+the two types of questions: is it from the video? or just a question from you yourself? rememebr you are a trained model with a knowledge base utside of the video which is useful. 
+
+{context}
+
+---
+
+Question: {question}
+
+"""
+
+def generate_data_store(content: str):
+    try:
+        # Convert content to Document
+        document = Document(page_content=content)
+        chunks = split_text([document])
+        print('Chunks:', chunks)
+        save_to_chroma(chunks)
+    except Exception as e:
+        print('Error in generate_data_store:', e)
+
+def split_text(documents: list[Document]):
+    try:
+        text_splitter = RecursiveCharacterTextSplitter(
+            chunk_size=300,
+            chunk_overlap=100,
+            length_function=len,
+            add_start_index=True,
+        )
+        chunks = text_splitter.split_documents(documents)
+        print(f"Split content into {len(chunks)} chunks.")
+        
+        # Print the first chunk as an example
+        document = chunks[0]
+        print(document.page_content)
+        print(document.metadata)
+        
+        return chunks
+    except Exception as e:
+        print('Error in split_text:', e)
+        return []
+
+def save_to_chroma(chunks: list[Document]):
+    try:
+        # Clear out the database first.
+        if os.path.exists(CHROMA_PATH):
+            print(f"Clearing existing database at {CHROMA_PATH}")
+            shutil.rmtree(CHROMA_PATH)
+
+        # Create a new DB from the documents.
+        db = Chroma.from_documents(
+            chunks, OpenAIEmbeddings(), persist_directory=CHROMA_PATH
+        )
+        db.persist()
+        print(f"Saved {len(chunks)} chunks to {CHROMA_PATH}.")
+    except Exception as e:
+        print('Error in save_to_chroma:', e)
+        raise
+
 
 def access_secret_version(secret_id, version_id="latest"):
     """
@@ -26,7 +103,7 @@ def access_secret_version(secret_id, version_id="latest"):
     secret_id: ID of the secret to access
     version_id: version of the secret (default to "latest")
 
-    Returns:
+    Returns:,,,,,,,,,,,,,,,,,,
     Secret value as a string.
     """
     project_id = "dynamic-heading-419922"
@@ -54,6 +131,7 @@ client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
 app = Flask(__name__)
 app.register_blueprint(youtube_transcriber)
+
 CORS(app, resources={r"/api/*": {"origins": "*"}})
 
 def call_api_in_parallel(prompts, apimodel, app):
@@ -107,6 +185,129 @@ def remove_fillers(text):
 @app.route('/')
 def health_check():
     return 'I am Healthy :)'
+@app.route('/api/transcribe_youtube', methods=['POST'])
+def transcribe_youtube():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
+
+    link = data.get('youtube_url')
+    if not link:
+        return jsonify({"error": "URL is required."}), 400
+
+    youtubeRegex = r"^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+"
+    match = re.match(youtubeRegex, link)
+    
+    if match:
+        # Attempt to extract the video ID from the URL
+        video_id = None
+        if "youtu.be" in link:
+            video_id = link.split("/")[-1]
+            print(video_id)
+        else:
+            video_id = link.split("v=")[-1].split("&")[0]
+            print(video_id)
+
+        try:
+            # Attempt to get the transcript for the given video ID
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            content = ' '.join([item['text'] for item in transcript_list])
+
+            generate_data_store(transcript_list)
+            
+            return jsonify({"content": content}), 200
+        except TranscriptsDisabled:
+            return jsonify({"error": "Transcripts are disabled for this video."}), 400
+        except NoTranscriptFound:
+            return jsonify({"error": "No transcript found for this video."}), 404
+        except Exception as e:
+            # Handle other possible exceptions
+            print('Error in transcribe_youtube:', e)
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "Invalid YouTube URL provided."}), 400
+@app.route('/api/query', methods=['POST'])
+def query():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
+
+    conversation = data.get('conversation', [])
+    query_text = data.get('query')
+    if not query_text:
+        return jsonify({"error": "Query text is required."}), 400
+
+    try:
+        embedding_function = OpenAIEmbeddings()
+        db = Chroma(persist_directory=CHROMA_PATH, embedding_function=embedding_function)
+
+        results = db.similarity_search_with_relevance_scores(query_text, k=3)
+        
+        # Log results to check structure
+        print(f"Results: {results}")
+        
+        context_text = "\n\n---\n\n".join([doc.page_content for doc, _score in results])
+        
+        # Format the prompt with conversation history
+        conversation_history = "\n".join([f"{msg['role']}: {msg['content']}" for msg in conversation])
+        prompt = f"{conversation_history}\n\n{PROMPT_TEMPLATE.format(context=context_text, question=query_text)}"
+
+        model = ChatOpenAI(model_name="gpt-4")  # Ensure GPT-4 is used
+        response_text = model.predict(prompt)
+
+        # Ensure proper handling of quotes in the response
+        clean_response = response_text.replace('\\"', '"').replace("\\'", "'")
+
+        return jsonify({"response": clean_response}), 200
+    except Exception as e:
+        print('Error in query:', e)
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route('/api/transcribe_youtubes', methods=['POST'])
+def transcribe_youtubes():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
+
+    link = data.get('youtube_url')
+    if not link:
+        return jsonify({"error": "URL is required."}), 400
+
+    youtubeRegex = r"^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+"
+    match = re.match(youtubeRegex, link)
+    
+    if match:
+        # Attempt to extract the video ID from the URL
+        video_id = None
+        if "youtu.be" in link:
+            video_id = link.split("/")[-1]
+            print(video_id)
+        else:
+            video_id = link.split("v=")[-1].split("&")[0]
+            print(video_id)
+
+        try:
+            # Attempt to get the transcript for the given video ID
+            transcript_list = YouTubeTranscriptApi.get_transcript(video_id)
+            content = ' '.join([item['text'] for item in transcript_list])
+
+            generate_data_store(content)
+            
+            #Concatenate all text items in the transcript list
+            #content = ' '.join([item['text'] for item in transcript_list])
+            
+            return jsonify({"content": content, "source": "YouTube"}), 200
+        except TranscriptsDisabled:
+            return jsonify({"error": "Transcripts are disabled for this video."}), 400
+        except NoTranscriptFound:
+            return jsonify({"error": "No transcript found for this video."}), 404
+        except Exception as e:
+            # Handle other possible exceptions
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "Invalid YouTube URL provided."}), 400
+
 
 @app.route('/api/user', methods=['POST'])
 def store_user():

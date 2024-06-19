@@ -22,7 +22,7 @@ Once you read all the text from all the arrays to get the transcript to analyze,
 -A: (dont skip any coins mentioned) include the "start" time stamp you see for each item and include them in the json format shown below. For All mentions. 
 
 
--B: (dont skip any coins mentioned) "Summary": Provide a concise summary of the key points discussed - needs to understand the context of the transcript and key points. It needs to make sense without having to research the idea further. make this a paragraph long. Dont start with "This video discusses" instead talk as in you are the person in the video.
+-B: (dont skip any coins mentioned) "Summary": Provide a concise summary of the key points discussed - needs to understand the context of the transcript and key points. It needs to make sense without having to research the idea further. They need to be actionable advices or lessons/conclusions from the video, if any. make this a paragraph long. Dont start with "This video discusses". Don't be surface level, go deep into the context of the video and its lessons. 
 
 "description": this arameter needs to be understandable, Full sentences (atleast 3-4 sentences nothing less), contextual explanation mentioned in the transcript for the item. must have this - read the texts after the name is mentioned in thetranscrip  to understand the message about it better" 
 
