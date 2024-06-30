@@ -148,7 +148,7 @@ def get_url_count_by_ip():
         return jsonify({"error": "Missing IP address"}), 400
 
     ip = data['ip']
-    print(ip)
+    #print(ip)
     conn = get_db_connection()
     try:
         count = get_url_count_by_ips(ip, conn)  # Assuming this function exists and works as intended
@@ -188,7 +188,7 @@ def process_video():
         return jsonify({"error": "YouTube URL is required."}), 400
 
     video_id = extract_video_id(youtube_url)
-    #print(video_id)
+    ##print(video_id)
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL."}), 400
     firebase_uid = data.get('firebase_uid')
@@ -221,7 +221,7 @@ def process_video():
             return jsonify(response), 200
         else:
             try:
-                print("Transcribing video...")
+                #print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
 
                 prompt_0 = ""
@@ -285,7 +285,7 @@ def process_video():
                 return jsonify({"error": "No transcript found for this video."}), 404
 
 
-            #print(combined_texts)
+            ##print(combined_texts)
             if len(combined_texts) > 320:
                 apimodel = 'gpt-4o'
             else:
@@ -315,7 +315,7 @@ def process_video():
         
         response.update({"summary": answer})
         response.update({"count": count})
-        print(response)
+        #print(response)
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

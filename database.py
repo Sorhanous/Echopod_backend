@@ -9,12 +9,12 @@ import os
 load_dotenv()
 
 # Debugging information to check if .env is loaded correctly
-print("Loaded .env file")
+#print("Loaded .env file")
 
 ENV = 'e1'
 
 
-print("Environment Variable ENV:", ENV)
+#print("Environment Variable ENV:", ENV)
 
 if ENV =="e1":
     db_user = "postgres"
@@ -40,7 +40,7 @@ db_port = 5432"""
 # Initialize the connection pool
 db_pool = pool.SimpleConnectionPool(
     minconn=1,
-    maxconn=20,
+    maxconn=30,
     user=db_user,
     password=db_password,
     host=db_host,
@@ -80,7 +80,7 @@ def upsert_user(user_data, conn):
     """
     try:
         with conn.cursor() as cur:
-            print("User Data: ", user_data)
+            #print("User Data: ", user_data)
             cur.execute(upsert_query, user_data)
         conn.commit()
     except psycopg2.IntegrityError as e:
@@ -215,7 +215,7 @@ def get_or_process_video_link(link_data, conn):
         
         if existing_summary:
             print("Summary already exists for this video.")
-            print(existing_summary)
+            #print(existing_summary)
             summ = {
                 "summary": existing_summary[0],
                 "link_id": existing_summary[1]
@@ -228,12 +228,12 @@ def get_or_process_video_link(link_data, conn):
                 url_count = cur.fetchone()
             
             if url_count:
-                print("URL Count:", url_count[0])
+                #print("URL Count:", url_count[0])
                 summ["url_count"] = url_count[0]
             else:
                 print("URL Count not found for user_id:", link_data['user_id'])
             
-            print(summ)
+            #print(summ)
             return True, summ
         
         return False, "Continue with processing"
@@ -247,7 +247,7 @@ def get_url_count_by_ips(ip, conn):
         with conn.cursor() as cur:
             cur.execute(query, (ip,))
             url_count = cur.fetchone()
-            print(f"URL Count: {url_count}")
+            #print(f"URL Count: {url_count}")
         return url_count[0] if url_count else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
