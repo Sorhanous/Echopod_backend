@@ -14,7 +14,7 @@ from transcribe import youtube_transcriber
 from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
-from database import get_db_connection, put_db_connection, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
+from database import get_db_connection, put_db_connection, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 from config import secrets  # Import secrets from config
 
 def access_secret_version(secret_id, version_id="latest"):
@@ -123,6 +123,43 @@ def store_user():
         put_db_connection(conn)
     return jsonify(response_message), status_code
 
+@app.route('/api/get_summary/<int:link_id>', methods=['GET'])
+def get_summary(link_id):
+    conn = get_db_connection()
+    try:
+        with conn.cursor() as cur:
+            cur.execute("SELECT video_url, video_summary_json FROM youtubelinks WHERE link_id = %s", (link_id,))
+            result = cur.fetchone()
+        if result:
+            return jsonify({
+                'video_url': result[0],
+                'summary': result[1]
+            }), 200
+        return jsonify({'message': 'Summary not found'}), 404
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+    finally:
+        put_db_connection(conn)
+
+@app.route('/api/get_url_count_by_ip', methods=['POST'])
+def get_url_count_by_ip():
+    data = request.get_json()
+    if 'ip' not in data:
+        return jsonify({"error": "Missing IP address"}), 400
+
+    ip = data['ip']
+    print(ip)
+    conn = get_db_connection()
+    try:
+        count = get_url_count_by_ips(ip, conn)  # Assuming this function exists and works as intended
+        return jsonify({"count": count}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+    finally:
+        put_db_connection(conn)
+
+
+
 @app.route('/api/get_channel_id', methods=['POST'])
 def get_channel_id():
     data = request.get_json()
@@ -156,6 +193,7 @@ def process_video():
         return jsonify({"error": "Invalid YouTube URL."}), 400
     firebase_uid = data.get('firebase_uid')
     youtube_url = data.get('youtube_url')
+    ip = data.get('ip')
     if not firebase_uid:
         return jsonify({"error": "Firebase UID is required."}), 400
     if not youtube_url:
@@ -164,12 +202,19 @@ def process_video():
     if not firebase_uid or not youtube_url:
         return jsonify({"error": "Missing required information."}), 400
     conn = get_db_connection()
+    count = None
     try:
-        user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
+        if firebase_uid == 'anonymous':
+            user_id = get_user_id_by_ip(ip, conn)
+            count = get_url_count_by_id(user_id,conn)
+        else: 
+            user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
+            count = get_url_count_by_id(user_id,conn)
         link_data = {
             'user_id': user_id,
             'video_url': youtube_url,
         }
+        
 
         exists, response = get_or_process_video_link(link_data, conn)
         if exists:
@@ -259,16 +304,24 @@ def process_video():
                 else:
                     answer = {"error": "Failed to get responses from API calls."}
 
-        _, db_status = store_youtube_link_data(
+        response, db_status = store_youtube_link_data(
             firebase_uid, youtube_url,
-            json.dumps(answer) if not isinstance(answer, str) else answer)
+            json.dumps(answer) if not isinstance(answer, str) else answer
+        )
 
         if db_status != 200:
             print("Error storing YouTube link data:", db_status)
+            return jsonify(response), db_status
+        
+        response.update({"summary": answer})
+        response.update({"count": count})
+        print(response)
+        return jsonify(response), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
     finally:
-        put_db_connection(conn)
-    #print(answer)
-    return answer
+        put_db_connection(conn) 
+    
 
 def extract_video_id(youtube_url):
     reg_exp = r'^.*((youtu.be\/)|(v\/)|(\/u\/\w\/)|(embed\/)|(watch\?))\??v?=?([^#\&\?]*).*'
