@@ -16,7 +16,6 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from database import get_db_connection, put_db_connection, increment_url_count, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 from config import secrets  # Import secrets from config
-import logging
 
 def access_secret_version(secret_id, version_id="latest"):
     """
@@ -128,11 +127,9 @@ def store_user():
 def get_summary(link_id):
     conn = get_db_connection()
     try:
-        logging.debug(f"Received request for link_id: {link_id}")
         with conn.cursor() as cur:
-            cur.execute("SELECT video_url, video_summary_json FROM youtubelinks WHERE link_id = %s::uuid", (link_id,))
+            cur.execute("SELECT video_url, video_summary_json FROM youtubelinks WHERE link_id = %s", (link_id,))
             result = cur.fetchone()
-            logging.debug(f"Query result: {result}")
         if result:
             return jsonify({
                 'video_url': result[0],
@@ -140,10 +137,9 @@ def get_summary(link_id):
             }), 200
         return jsonify({'message': 'Summary not found'}), 404
     except Exception as e:
-        logging.error(f"Error occurred: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        conn.close()
+        put_db_connection(conn)
 
 @app.route('/api/get_url_count_by_ip', methods=['POST'])
 def get_url_count_by_ip():
@@ -208,6 +204,7 @@ def process_video():
     conn = get_db_connection()
     count = None
     try:
+        #print("ip", ip)
         if firebase_uid == 'anonymous':
             user_id = get_user_id_by_ip(ip, conn)
             count = get_url_count_by_id(user_id,conn)
@@ -219,20 +216,22 @@ def process_video():
             'video_url': youtube_url,
         }
         
-
+       # print("user_id is", user_id)
         exists, response = get_or_process_video_link(link_data, conn)
+
+       # print("exists", exists)
         if exists:
             return jsonify(response), 200
         else:
             try:
-                #print("Transcribing video...")
+                print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-                
+
                 prompt_0 = ""
                 prompt_1 = ""
                 prompt_2 = ""
                 prompt_3 = ""
-
+                #print("combined_texts", combined_texts)
                 if len(combined_texts) > 900:
                     first_split_index = len(combined_texts) // 3
                     second_split_index = 2 * len(combined_texts) // 3
@@ -282,14 +281,14 @@ def process_video():
                         for key, value in item.items() if key != "duration"
                     } for item in combined_texts]
                     prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
-           
+                    
             except TranscriptsDisabled:
                 return jsonify({"error": "Transcripts are disabled for this video."}), 400
             except NoTranscriptFound:
                 return jsonify({"error": "No transcript found for this video."}), 404
 
 
-            ##print(combined_texts)
+            #print(combined_texts)
             if len(combined_texts) > 320:
                 apimodel = 'gpt-4o'
             else:
@@ -314,13 +313,13 @@ def process_video():
         )
 
         if db_status != 200:
+            increment_url_count(user_id, conn)
             print("Error storing YouTube link data:", db_status)
             return jsonify(response), db_status
         
         response.update({"summary": answer})
         response.update({"count": count})
         #print(response)
-        increment_url_count(user_id, conn)
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

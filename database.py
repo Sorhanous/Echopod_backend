@@ -66,12 +66,12 @@ def upsert_user(user_data, conn):
          %(user_ip)s, %(firebase_uid)s, %(name)s, %(display_name)s, %(email)s, %(email_verified)s,
         %(photo_url)s, %(signup_datetime)s, %(last_login_datetime)s
     )
-    ON CONFLICT (firebase_uid)
+    ON CONFLICT (email)
     DO UPDATE SET
         user_ip = EXCLUDED.user_ip,
         name = EXCLUDED.name,
         display_name = EXCLUDED.display_name,
-        email = EXCLUDED.email,
+        firebase_uid = EXCLUDED.firebase_uid,
         email_verified = EXCLUDED.email_verified,
         photo_url = EXCLUDED.photo_url,
         signup_datetime = EXCLUDED.signup_datetime,
@@ -86,8 +86,13 @@ def upsert_user(user_data, conn):
     except psycopg2.IntegrityError as e:
         if "users_email_key" in str(e):
             print("An account with this email already exists.")
+        if "unique_user_ip" in str(e):
+            print("An account with this IP already exists.")
+            print(e)
         conn.rollback()
         raise
+    
+    #unique_user_ip
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()
@@ -96,7 +101,7 @@ def upsert_user(user_data, conn):
 
 def get_url_count_by_id(id, conn):
     try:
-        query = "SELECT url_count FROM users WHERE user_ip = %s;"
+        query = "SELECT url_count FROM users WHERE user_id = %s;"
         with conn.cursor() as cur:
             cur.execute(query, (id,))
             url_count = cur.fetchone()
@@ -110,7 +115,12 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     try:
         
         query = "SELECT user_id FROM users WHERE firebase_uid = %s;"
+       # update_query = "UPDATE users SET url_count = url_count + 1 WHERE firebase_uid = %s;"
         with conn.cursor() as cur:
+            # Increment url_count
+          #  cur.execute(update_query, (firebase_uid,))
+          #  conn.commit()
+            
             # Get user_id
             cur.execute(query, (firebase_uid,))
             user_id = cur.fetchone()
@@ -123,19 +133,23 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-        #print(f"IP: {ip}")
+        print(f"IP: {ip}")
         query = "SELECT user_id FROM users WHERE user_ip = %s;"
-        with conn.cursor() as cur:  
+        #update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_ip = %s;"
+        with conn.cursor() as cur:
+            # Increment url_count
+           # cur.execute(update_query, (ip,))
+           # conn.commit()
+            
             # Get user_id
             cur.execute(query, (ip,))
             user_ip = cur.fetchone()
-            #print(f"User IP: {user_ip}")
+            print(f"User IP: {user_ip}")
         return user_ip[0] if user_ip else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
-    
 def increment_url_count(user_id, conn):
     try:
         print("User ID:", user_id)
@@ -149,7 +163,6 @@ def increment_url_count(user_id, conn):
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
-
 
 def insert_youtube_link(link_data, conn):
     try:
