@@ -14,8 +14,9 @@ from transcribe import youtube_transcriber
 from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
-from database import get_db_connection, put_db_connection, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
+from database import get_db_connection, put_db_connection, increment_url_count, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 from config import secrets  # Import secrets from config
+import logging
 
 def access_secret_version(secret_id, version_id="latest"):
     """
@@ -123,13 +124,15 @@ def store_user():
         put_db_connection(conn)
     return jsonify(response_message), status_code
 
-@app.route('/api/get_summary/<int:link_id>', methods=['GET'])
+@app.route('/api/get_summary/<string:link_id>', methods=['GET'])
 def get_summary(link_id):
     conn = get_db_connection()
     try:
+        logging.debug(f"Received request for link_id: {link_id}")
         with conn.cursor() as cur:
-            cur.execute("SELECT video_url, video_summary_json FROM youtubelinks WHERE link_id = %s", (link_id,))
+            cur.execute("SELECT video_url, video_summary_json FROM youtubelinks WHERE link_id = %s::uuid", (link_id,))
             result = cur.fetchone()
+            logging.debug(f"Query result: {result}")
         if result:
             return jsonify({
                 'video_url': result[0],
@@ -137,9 +140,10 @@ def get_summary(link_id):
             }), 200
         return jsonify({'message': 'Summary not found'}), 404
     except Exception as e:
+        logging.error(f"Error occurred: {e}")
         return jsonify({'error': str(e)}), 500
     finally:
-        put_db_connection(conn)
+        conn.close()
 
 @app.route('/api/get_url_count_by_ip', methods=['POST'])
 def get_url_count_by_ip():
@@ -223,7 +227,7 @@ def process_video():
             try:
                 #print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-
+                
                 prompt_0 = ""
                 prompt_1 = ""
                 prompt_2 = ""
@@ -316,6 +320,7 @@ def process_video():
         response.update({"summary": answer})
         response.update({"count": count})
         #print(response)
+        increment_url_count(user_id, conn)
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500

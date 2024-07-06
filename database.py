@@ -110,12 +110,7 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     try:
         
         query = "SELECT user_id FROM users WHERE firebase_uid = %s;"
-        update_query = "UPDATE users SET url_count = url_count + 1 WHERE firebase_uid = %s;"
         with conn.cursor() as cur:
-            # Increment url_count
-            cur.execute(update_query, (firebase_uid,))
-            conn.commit()
-            
             # Get user_id
             cur.execute(query, (firebase_uid,))
             user_id = cur.fetchone()
@@ -128,23 +123,33 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-        print(f"IP: {ip}")
+        #print(f"IP: {ip}")
         query = "SELECT user_id FROM users WHERE user_ip = %s;"
-        update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_ip = %s;"
-        with conn.cursor() as cur:
-            # Increment url_count
-            cur.execute(update_query, (ip,))
-            conn.commit()
-            
+        with conn.cursor() as cur:  
             # Get user_id
             cur.execute(query, (ip,))
             user_ip = cur.fetchone()
-            print(f"User IP: {user_ip}")
+            #print(f"User IP: {user_ip}")
         return user_ip[0] if user_ip else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
+    
+def increment_url_count(user_id, conn):
+    try:
+        print("User ID:", user_id)
+        update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_id = %s;"
+        with conn.cursor() as cur:
+            # Ensure user_id is passed as a tuple
+            cur.execute(update_query, (int(user_id),))
+            conn.commit()
+            print("URL count incremented successfully")
+    except psycopg2.DatabaseError as e:
+        print(f"Database error: {e}")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+
 
 def insert_youtube_link(link_data, conn):
     try:
