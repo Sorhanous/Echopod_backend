@@ -210,23 +210,31 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-       # print(f"IP: {ip}")
-        query = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NULL;"
-        #update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_ip = %s;"
+        print(f"IP: {ip}")
+        
+        # Check for a record with the given IP and a non-null email
+        query_with_email = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NOT NULL;"
         with conn.cursor() as cur:
-            # Increment url_count
-           # cur.execute(update_query, (ip,))
-           # conn.commit()
-            
-            # Get user_id
-            cur.execute(query, (ip,))
-            user_ip = cur.fetchone()
-            #print(f"User IP: {user_ip}")
-        return user_ip[0] if user_ip else None
+            cur.execute(query_with_email, (ip,))
+            user_with_email = cur.fetchone()
+        
+        if user_with_email:
+            return user_with_email[0]
+        
+        # If no record with a non-null email, check for a record with a null email
+        query_without_email = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NULL;"
+        with conn.cursor() as cur:
+            cur.execute(query_without_email, (ip,))
+            user_without_email = cur.fetchone()
+        
+        return user_without_email[0] if user_without_email else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
+
+    
+
 def increment_url_count(user_id, conn):
 
     try:
@@ -270,10 +278,10 @@ def insert_youtube_link(link_data, conn):
             conn.rollback()
         return False, str(e)
 
-def store_youtube_link_data(firebase_uid, youtube_url, video_summary):
+def store_youtube_link_data(user_id, youtube_url, video_summary):
     conn = get_db_connection()
     try:
-        user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
+       #user_id = get_user_id_by_firebase_uid(firebase_uid, conn)
         if not user_id:
             put_db_connection(conn)
             return {"error": "User not found"}, 404
@@ -337,15 +345,40 @@ def get_or_process_video_link(link_data, conn):
     except psycopg2.DatabaseError as e:
         return False, str(e)
     
-def get_url_count_by_ips(ip, conn):
+def get_url_count_by_ips(data, conn):
     try:
-        query = "SELECT url_count FROM users WHERE user_ip = %s;"
+        ip = data.get('ip')
+        current_user = data.get('currentUser')
+        #print(">>>>>>>>>>>>>" , current_user)
+        if current_user and current_user.get('email'):
+
+            query = "SELECT url_count FROM users WHERE email = %s;"
+            param = (current_user['email'],)
+        else:
+            query = "SELECT url_count FROM users WHERE user_ip = %s AND email IS NULL;"
+            param = (ip,)
+        
+        #print("Query:", query)
+        #print("Param:", param)
+        
         with conn.cursor() as cur:
-            cur.execute(query, (ip,))
+            cur.execute(query, param)
             url_count = cur.fetchone()
             #print(f"URL Count: {url_count}")
+        
         return url_count[0] if url_count else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
+def has_email_by_ip(ip, conn):
+    try:
+        query = "SELECT 1 FROM users WHERE user_ip = %s AND email IS NOT NULL;"
+        with conn.cursor() as cur:
+            cur.execute(query, (ip,))
+            result = cur.fetchone()
+        return result is not None
+    except psycopg2.DatabaseError as e:
+        print(f"Database error: {e}")
+        conn.rollback()
+        return False

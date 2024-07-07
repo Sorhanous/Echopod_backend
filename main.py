@@ -14,7 +14,7 @@ from transcribe import youtube_transcriber
 from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
-from database import get_db_connection, put_db_connection, increment_url_count, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
+from database import get_db_connection, has_email_by_ip, put_db_connection, increment_url_count, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
 from config import secrets  # Import secrets from config
 
 def access_secret_version(secret_id, version_id="latest"):
@@ -141,6 +141,25 @@ def get_summary(link_id):
     finally:
         put_db_connection(conn)
 
+@app.route('/api/check_email_by_ip', methods=['POST'])
+def api_check_email_by_ip():
+    data = request.json
+    ip = data.get('ip')
+    
+    if not ip:
+        return jsonify({"error": "IP address is required"}), 400
+    
+    conn = get_db_connection()
+    try:
+        has_email = has_email_by_ip(ip, conn)
+        return jsonify({"has_email": has_email})
+    except Exception as e:
+        print(f"An error occurred: {str(e)}")
+        return jsonify({"error": "An internal error occurred"}), 500
+    finally:
+        put_db_connection(conn)
+
+
 @app.route('/api/get_url_count_by_ip', methods=['POST'])
 def get_url_count_by_ip():
     data = request.get_json()
@@ -148,10 +167,10 @@ def get_url_count_by_ip():
         return jsonify({"error": "Missing IP address"}), 400
 
     ip = data['ip']
-    #print(ip)
+    #print("HELLOL " , data)
     conn = get_db_connection()
     try:
-        count = get_url_count_by_ips(ip, conn)  # Assuming this function exists and works as intended
+        count = get_url_count_by_ips(data, conn)  # Assuming this function exists and works as intended
         return jsonify({"count": count}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
@@ -180,7 +199,7 @@ def get_channel_id():
 def process_video():
     answer = ''
     data = request.get_json()
-    print(data)
+    #print('Data', data)
     if not data:
         return jsonify({"error": "No data sent"}), 400
 
@@ -189,7 +208,7 @@ def process_video():
         return jsonify({"error": "YouTube URL is required."}), 400
 
     video_id = extract_video_id(youtube_url)
-    ##print(video_id)
+    #print(video_id)
     if not video_id:
         return jsonify({"error": "Invalid YouTube URL."}), 400
     firebase_uid = data.get('firebase_uid')
@@ -204,10 +223,11 @@ def process_video():
     if not firebase_uid or not youtube_url:
         return jsonify({"error": "Missing required information."}), 400
     conn = get_db_connection()
-    print(conn)
+    #print('firebase_uid: ' + firebase_uid)
+    #print('>>>>>>>>>>>>>>>>>>>>>')
     count = None
     try:
-       # print("ip", ip)
+        #print("ip", firebase_uid)
         if firebase_uid == 'anonymous':
             user_id = get_user_id_by_ip(ip, conn)
             count = get_url_count_by_id(user_id,conn)
@@ -219,15 +239,15 @@ def process_video():
             'video_url': youtube_url,
         }
         
-       # print("user_id is", user_id)
+        #print("user_id is", user_id)
         exists, response = get_or_process_video_link(link_data, conn)
 
-       # print("exists", exists)
+        #print("exists", exists)
         if exists:
             return jsonify(response), 200
         else:
             try:
-                #print("Transcribing video...")
+                print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
 
                 prompt_0 = ""
@@ -311,7 +331,7 @@ def process_video():
                     answer = {"error": "Failed to get responses from API calls."}
 
         response, db_status = store_youtube_link_data(
-            firebase_uid, youtube_url,
+            user_id, youtube_url,
             json.dumps(answer) if not isinstance(answer, str) else answer
         )
 
