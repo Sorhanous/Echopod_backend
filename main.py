@@ -180,6 +180,7 @@ def get_channel_id():
 def process_video():
     answer = ''
     data = request.get_json()
+    print(data)
     if not data:
         return jsonify({"error": "No data sent"}), 400
 
@@ -194,6 +195,7 @@ def process_video():
     firebase_uid = data.get('firebase_uid')
     youtube_url = data.get('youtube_url')
     ip = data.get('ip')
+    #print("IP", ip)
     if not firebase_uid:
         return jsonify({"error": "Firebase UID is required."}), 400
     if not youtube_url:
@@ -202,9 +204,10 @@ def process_video():
     if not firebase_uid or not youtube_url:
         return jsonify({"error": "Missing required information."}), 400
     conn = get_db_connection()
+    print(conn)
     count = None
     try:
-        #print("ip", ip)
+       # print("ip", ip)
         if firebase_uid == 'anonymous':
             user_id = get_user_id_by_ip(ip, conn)
             count = get_url_count_by_id(user_id,conn)
@@ -224,7 +227,7 @@ def process_video():
             return jsonify(response), 200
         else:
             try:
-                print("Transcribing video...")
+                #print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
 
                 prompt_0 = ""
@@ -313,10 +316,10 @@ def process_video():
         )
 
         if db_status != 200:
-            increment_url_count(user_id, conn)
             print("Error storing YouTube link data:", db_status)
             return jsonify(response), db_status
-        
+        #print("incrementing count of : ", user_id)
+        increment_url_count(user_id, conn)
         response.update({"summary": answer})
         response.update({"count": count})
         #print(response)

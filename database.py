@@ -4,6 +4,8 @@ from psycopg2 import pool
 from config import secrets  # Import secrets from config
 from dotenv import load_dotenv
 import os
+from psycopg2 import sql
+from datetime import datetime
 
 # Load environment variables from .env file
 load_dotenv()
@@ -49,6 +51,7 @@ db_pool = pool.SimpleConnectionPool(
 )
 
 def get_db_connection():
+    print("Getting DB connection")
     return db_pool.getconn()
 
 def put_db_connection(connection):
@@ -57,46 +60,120 @@ def put_db_connection(connection):
 def close_db_pool():
     db_pool.closeall()
 
-def upsert_user(user_data, conn):
-    upsert_query = """
-    INSERT INTO Users (
-        user_ip, firebase_uid, name, display_name, email, email_verified,
-        photo_url, signup_datetime, last_login_datetime
-    ) VALUES (
-         %(user_ip)s, %(firebase_uid)s, %(name)s, %(display_name)s, %(email)s, %(email_verified)s,
-        %(photo_url)s, %(signup_datetime)s, %(last_login_datetime)s
-    )
-    ON CONFLICT (email)
-    DO UPDATE SET
-        user_ip = EXCLUDED.user_ip,
-        name = EXCLUDED.name,
-        display_name = EXCLUDED.display_name,
-        firebase_uid = EXCLUDED.firebase_uid,
-        email_verified = EXCLUDED.email_verified,
-        photo_url = EXCLUDED.photo_url,
-        signup_datetime = EXCLUDED.signup_datetime,
-        last_login_datetime = EXCLUDED.last_login_datetime
 
-    """
+
+def upsert_user(user_data, conn):
+    # Ensure all required keys are present and properly set in user_data
+    required_keys = [
+        'user_ip', 'firebase_uid', 'name', 'display_name', 'email', 'email_verified',
+        'photo_url', 'signup_datetime', 'last_login_datetime', 'active', 'free_trial'
+    ]
+
+    for key in required_keys:
+        if key not in user_data:
+            user_data[key] = None
+
+    # Convert boolean to integer for active and free_trial fields
+    user_data['active'] = 1 if user_data['active'] else 0
+    user_data['free_trial'] = 1 if user_data['free_trial'] else 0
+
+    # Ensure email and user_ip are not empty
+    if user_data['email'] == '':
+        user_data['email'] = None
+    if user_data['user_ip'] == '':
+        user_data['user_ip'] = None
+
+    # Ensure signup_datetime and last_login_datetime have valid values
+    if user_data['signup_datetime'] is None or user_data['signup_datetime'] == '':
+        user_data['signup_datetime'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if user_data['last_login_datetime'] is None or user_data['last_login_datetime'] == '':
+        user_data['last_login_datetime'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+
+    # Check conditions
+    if user_data['email'] is None and user_data['user_ip'] is None:
+        print("Both email and user_ip are NULL. No action taken.")
+        return
+
     try:
         with conn.cursor() as cur:
-            #print("User Data: ", user_data)
-            cur.execute(upsert_query, user_data)
-        conn.commit()
+            # Check for existing user based on email if email is provided
+            if user_data['email'] is not None:
+                cur.execute("SELECT user_id FROM Users WHERE email = %s", (user_data['email'],))
+                result = cur.fetchone()
+                if result:
+                    existing_user_id = result[0]
+                    update_query = """
+                    UPDATE Users
+                    SET user_ip = %s, firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
+                        photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
+                    WHERE user_id = %s
+                    """
+                    cur.execute(update_query, (
+                        user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
+                        user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
+                        user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
+                    ))
+                    conn.commit()
+                    print("Record updated successfully based on email.")
+                    return
+            
+            # Check for existing user based on user_ip if email is not provided
+            if user_data['email'] is None and user_data['user_ip'] is not None:
+                cur.execute("SELECT user_id, email FROM Users WHERE user_ip = %s", (user_data['user_ip'],))
+                result = cur.fetchone()
+                if result:
+                    existing_user_id, existing_email = result
+                    if existing_email is None:
+                        update_query = """
+                        UPDATE Users
+                        SET firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
+                            photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
+                        WHERE user_id = %s
+                        """
+                        cur.execute(update_query, (
+                            user_data['firebase_uid'], user_data['name'], user_data['display_name'],
+                            user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
+                            user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
+                        ))
+                        conn.commit()
+                        print("Record updated successfully based on user_ip with no email.")
+                        return
+                    else:
+                        print("Record with this user_ip already exists and has an email. No action taken.")
+                        return
+            
+            # Insert new user if no existing user is found
+            insert_query = """
+            INSERT INTO Users (
+                user_ip, firebase_uid, name, display_name, email, email_verified, photo_url, signup_datetime,
+                last_login_datetime, active, free_trial
+            )
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """
+            cur.execute(insert_query, (
+                user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
+                user_data['email'], user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
+                user_data['last_login_datetime'], user_data['active'], user_data['free_trial']
+            ))
+            conn.commit()
+            print("New record inserted successfully.")
+
     except psycopg2.IntegrityError as e:
-        if "users_email_key" in str(e):
-            print("An account with this email already exists.")
-        if "unique_user_ip" in str(e):
-            print("An account with this IP already exists.")
-            print(e)
         conn.rollback()
+        error_message = str(e)
+        print(f"IntegrityError: {error_message}")
         raise
-    
-    #unique_user_ip
-    except psycopg2.DatabaseError as e:
-        print(f"Database error: {e}")
+    except psycopg2.Error as e:
         conn.rollback()
+        error_message = str(e)
+        print(f"DatabaseError: {error_message}")
         raise
+    except Exception as e:
+        conn.rollback()
+        error_message = str(e)
+        print(f"UnexpectedError: {error_message}")
+        raise
+
 
 
 def get_url_count_by_id(id, conn):
@@ -133,8 +210,8 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-        print(f"IP: {ip}")
-        query = "SELECT user_id FROM users WHERE user_ip = %s;"
+       # print(f"IP: {ip}")
+        query = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NULL;"
         #update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_ip = %s;"
         with conn.cursor() as cur:
             # Increment url_count
@@ -144,15 +221,16 @@ def get_user_id_by_ip(ip, conn):
             # Get user_id
             cur.execute(query, (ip,))
             user_ip = cur.fetchone()
-            print(f"User IP: {user_ip}")
+            #print(f"User IP: {user_ip}")
         return user_ip[0] if user_ip else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
 def increment_url_count(user_id, conn):
+
     try:
-        print("User ID:", user_id)
+       # print("Here we are: ", user_id)
         update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_id = %s;"
         with conn.cursor() as cur:
             # Ensure user_id is passed as a tuple
