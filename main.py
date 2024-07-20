@@ -342,7 +342,7 @@ def process_video():
         increment_url_count(user_id, conn)
         response.update({"summary": answer})
         response.update({"count": count})
-        #print(response)
+        print(response)
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
