@@ -13,7 +13,7 @@ load_dotenv()
 # Debugging information to check if .env is loaded correctly
 #print("Loaded .env file")
 
-ENV = 'e1'
+ENV = 'e2'
 
 
 #print("Environment Variable ENV:", ENV)
