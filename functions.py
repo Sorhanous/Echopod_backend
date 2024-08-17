@@ -6,12 +6,12 @@ def combine_jsons(json1, json2, json3):
   
   summaries = []
   combined_summary = ''
-  if 'summary' in json1:
-      summaries.append(json1['summary'])
-  if 'summary' in json2:
-      summaries.append(json2['summary'])
-  if 'summary' in json3:
-      summaries.append(json3['summary'])
+  if 'key_conclusions' in json1:
+      summaries.append(json1['key_conclusions'])
+  if 'key_conclusions' in json2:
+      summaries.append(json2['key_conclusions'])
+  if 'key_conclusions' in json3:
+      summaries.append(json3['key_conclusions'])
   
   # Function to remove the first sentence
   def remove_first_sentence(s):
@@ -25,11 +25,11 @@ def combine_jsons(json1, json2, json3):
       # Remove the first sentence from summaries[1] and summaries[2]
       summaries[1] = remove_first_sentence(summaries[1])
       summaries[2] = remove_first_sentence(summaries[2])
-      combined_summary = summaries[0] + " Moreover, " + summaries[1] + " Finally, " + summaries[2]
+      combined_summary = summaries[0] + summaries[1] + summaries[2]
   elif len(summaries) == 2:
       # Remove the first sentence from summaries[1] only
       summaries[1] = remove_first_sentence(summaries[1])
-      combined_summary = summaries[0] + " Moreover, " + summaries[1]
+      combined_summary = summaries[0] +  summaries[1]
   else:
       combined_summary = summaries[0]
 
@@ -38,7 +38,9 @@ def combine_jsons(json1, json2, json3):
   combined_json = {
       'summary': combined_summary,
       'reliability_score': max(json1.get('reliability_score', 0), json2.get('reliability_score', 0), json3.get('reliability_score', 0)),
-      'sentiment_analysis': " & ".join(filter(None, [json1.get('sentiment_analysis', ''), json3.get('sentiment_analysis', '')])),
+      'sentiment_analysis': [json1.get('sentiment_analysis', '')],
+      #'sentiment_analysis': " & ".join(filter(None, [json1.get('sentiment_analysis', ''), json3.get('sentiment_analysis', '')])),
+
   }
   def normalize_key(key):
       # Convert to lowercase and replace underscores with spaces

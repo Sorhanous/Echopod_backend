@@ -1,21 +1,24 @@
 from flask import Flask, jsonify, request
 import json
 from flask_cors import CORS
-from pydantic_core.core_schema import dataclass_schema
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
-import os
 import openai
 import re
 from google.cloud import secretmanager
-from dotenv import load_dotenv
 from prompts import structured_prompt
+from create_database import generate_data_store
 from transcribe import youtube_transcriber
 from functions import combine_jsons
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from googleapiclient.discovery import build
 from database import get_db_connection, has_email_by_ip, put_db_connection, increment_url_count, get_url_count_by_id, get_url_count_by_ips,  get_user_id_by_ip, upsert_user, store_youtube_link_data, get_or_process_video_link, get_user_id_by_firebase_uid
-from config import secrets  # Import secrets from config
+from config import secrets  
+from query_data import query_data
+
+
+
+
 
 def access_secret_version(secret_id, version_id="latest"):
     """
@@ -76,7 +79,7 @@ def call_openai_api_with_context(prompt, apimodel, app):
         return call_openai_api(prompt, apimodel)
 
 # Initial call:
-def call_openai_api(_prompt, apimodel):
+def call_openai_api(_prompt, apimodel: str = "gpt-4o"):
     try:
         completion = client.chat.completions.create(model=apimodel,
                                                     temperature=1,
@@ -107,6 +110,83 @@ def remove_fillers(text):
 @app.route('/')
 def health_check():
     return 'I am Healthy :)'
+
+
+@app.route('/api/query_data', methods=['POST'])
+def query_data_api():
+    data = request.get_json()
+   
+    
+    if not data or 'query' not in data:
+        return jsonify({"error": "Query text is required"}), 400
+    
+    query_text = data['query']
+    video_id = data.get('videoId', None)  # Extract videoId from the request data, default to None if not provided
+    conversation = data.get('conversation', [])  # Extract conversation from the request data, default to an empty list if not provided
+    chroma_path = data.get('chromaPath', None)  # Extract chroma_path from the request data, default to None if not provided
+    yt_transcript = data.get('transcript_chunk', None)  # Extract transcript from the request data, default to None if not provided
+    response = query_data(query_text, video_id, conversation, chroma_path, client, yt_transcript)  # Pass query_text, video_id, conversation, and chroma_path to the query_data function
+    return jsonify(response)
+
+@app.route('/api/transcribe_youtube', methods=['POST'])
+def transcribe_youtube():
+    data = request.get_json()
+    if not data:
+        return jsonify({"error": "No data sent"}), 400
+
+    link = data.get('youtube_url')
+    if not link:
+        return jsonify({"error": "URL is required."}), 400
+
+    youtubeRegex = r"^(https?:\/\/)?(www\.)?(youtube\.com|youtu\.?be)\/.+"
+    match = re.match(youtubeRegex, link)
+    
+    if match:
+        # Attempt to extract the video ID from the URL
+        video_id = None
+        if "youtu.be" in link:
+            video_id = link.split("/")[-1]
+            print(video_id)
+        else:
+            video_id = link.split("v=")[-1].split("&")[0]
+            print(video_id)
+
+        try:
+            # Attempt to get the transcript for the given video ID
+            content = YouTubeTranscriptApi.get_transcript(video_id)
+            #content = ' '.join([item['text'] for item in transcript_list])
+            #print("#############################")
+           # print(content)
+
+            content = [
+                {
+                    key: value
+                    for key, value in item.items() if key != "duration"
+                }
+                    for item in content
+                ]
+
+            content = [
+                {
+                    "text": remove_fillers(item["text"]),
+                    "start_time": item["start"]
+                }
+                for item in content
+            ]
+            print("#############################")
+            # Concatenate all text items in the transcript list
+            #content = ' '.join([item['text'] for item in transcript_list])
+            return jsonify({"content": content, "length": len(content)}), 200
+           # return jsonify({"content": content, "source": "YouTube"}), 200
+        except TranscriptsDisabled:
+            return jsonify({"error": "Transcripts are disabled for this video."}), 400
+        except NoTranscriptFound:
+            return jsonify({"error": "No transcript found for this video."}), 404
+        except Exception as e:
+            # Handle other possible exceptions
+            return jsonify({"error": str(e)}), 500
+    else:
+        return jsonify({"error": "Invalid YouTube URL provided."}), 400
 
 @app.route('/api/user', methods=['POST'])
 def store_user():
@@ -223,8 +303,7 @@ def process_video():
     if not firebase_uid or not youtube_url:
         return jsonify({"error": "Missing required information."}), 400
     conn = get_db_connection()
-    #print('firebase_uid: ' + firebase_uid)
-    #print('>>>>>>>>>>>>>>>>>>>>>')
+  
     count = None
     try:
         #print("ip", firebase_uid)
@@ -244,12 +323,20 @@ def process_video():
 
         #print("exists", exists)
         if exists:
+            combined_text = YouTubeTranscriptApi.get_transcript(video_id)
+            print("Transcript loading to chromaDB:")
+            chroma_path = generate_data_store(combined_text)
+            response.update({"chroma_path": chroma_path}) 
+            response.update({"url_count": count})
+            print(response)
             return jsonify(response), 200
         else:
             try:
                 print("Transcribing video...")
                 combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-
+                print("Transcript loading to chromaDB:")
+                chroma_path = generate_data_store(combined_texts)
+                print("Transcript loaded to chromaDB")
                 prompt_0 = ""
                 prompt_1 = ""
                 prompt_2 = ""
@@ -311,7 +398,7 @@ def process_video():
                 return jsonify({"error": "No transcript found for this video."}), 404
 
 
-            #print(combined_texts)
+            print(combined_texts)
             if len(combined_texts) > 320:
                 apimodel = 'gpt-4o'
             else:
@@ -320,6 +407,12 @@ def process_video():
 
             if len(prompt_0) > 0:
                 answer = call_openai_api(prompt_0, apimodel)
+                    
+                if hasattr(answer, 'key_conclusions'):
+                    # Rename 'key_conclusions' to 'summary'
+                    answer.summary = answer.key_conclusions
+                    del answer.key_conclusions
+
             else:
                 prompts = [prompt_1, prompt_2, prompt_3]
                 responses = call_api_in_parallel(prompts, apimodel, app)
@@ -338,10 +431,11 @@ def process_video():
         if db_status != 200:
             print("Error storing YouTube link data:", db_status)
             return jsonify(response), db_status
-        #print("incrementing count of : ", user_id)
+        print("incrementing count of : ", user_id)
         increment_url_count(user_id, conn)
         response.update({"summary": answer})
-        response.update({"count": count})
+        response.update({"url_count": count})
+        response.update({"chroma_path": chroma_path}) 
         print(response)
         return jsonify(response), 200
     except Exception as e:

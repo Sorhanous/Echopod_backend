@@ -13,7 +13,7 @@ load_dotenv()
 # Debugging information to check if .env is loaded correctly
 #print("Loaded .env file")
 
-ENV = 'e2'
+ENV = 'e1'
 
 
 #print("Environment Variable ENV:", ENV)
@@ -236,7 +236,7 @@ def get_user_id_by_ip(ip, conn):
     
 
 def increment_url_count(user_id, conn):
-
+    print("Incrementing URL count")
     try:
        # print("Here we are: ", user_id)
         update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_id = %s;"
@@ -338,6 +338,7 @@ def get_or_process_video_link(link_data, conn):
                 print("URL Count not found for user_id:", link_data['user_id'])
             
             #print(summ)
+            
             return True, summ
         
         return False, "Continue with processing"

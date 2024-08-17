@@ -2,6 +2,9 @@ structured_prompt = f"""
 
 *** Follow these Instructions: ***
 
+****>>>> "key_conclusions": Provide a list of items each start with "-". end with a period '. ' and It needs to be all the key take aways and conclusions of the transcript. Use your own judgment to come up with top 3-4 key points/conclusions. They cant be vague.  ****
+this key_conclusions  needs to always be in this format mentioend ^ above. there needs to be a space after the period.
+
 ***IMPORTANT: NEVER RETURN ANY MESSAGE STRINGS ABOVE OR AFTER THE JSON OBJECT. ALWAYS ONLY RETURN JSON OBJECT.***
 
 - INTRO:
@@ -17,7 +20,7 @@ Once you read all the text from all the arrays to get the transcript to analyze,
 
 -A: (dont skip any coins mentioned) include the "start" time stamp you see for each item and include them in the json format shown below. For All mentions.
 
--B: (dont skip any coins mentioned) "Summary": Provide a concise summary of the key points discussed - needs to understand the context of the transcript and key points. It needs to make sense without having to research the idea further. make this a paragraph long. Dont start with "This video discusses" instead talk as in you are the person in the video.
+-B: (dont skip any coins mentioned) "key_conclusions": Provide a list of items each start with "-". It needs to be all the main key take aways and conclusions of the transcript.
 
 "description": this parameter needs to be understandable, Full sentences (at least 3-4 sentences nothing less), contextual explanation mentioned in the transcript for the item. must have this - read the texts after the name is mentioned in the transcript to understand the message about it better.
 
@@ -65,7 +68,7 @@ Each item under categories must always have "name", "topic", "description", and 
 ***always return the following format or our app will break if any of the parameters are missing***
 
 {{
-  "summary": "This video talks about (context is needed here)",
+  "key_conclusions": "-item1 -item2 -item3 -item4 -item5 ....",
   "all_mentions": {{
     "<category 1>": [
       {{
@@ -185,3 +188,7 @@ Each item under categories must always have "name", "topic", "description", and 
 LIKE an API would.***
 -P: if there are duplicates (categories or items) in the final json, remove one of them, unless they are in different times. again, dont return duplicate names or categories, merge them all if you see duplicates.
 """
+
+
+
+
