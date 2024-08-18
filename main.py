@@ -1,4 +1,5 @@
 from flask import Flask, jsonify, request
+import requests 
 import json
 from flask_cors import CORS
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -44,6 +45,20 @@ def access_secret_version(secret_id, version_id="latest"):
 
     # Return the payload as a string.
     return response.payload.data.decode("UTF-8")
+
+
+
+
+# Proxy configuration
+proxies = {
+    'http': 'http://brd-customer-hl_31c77a7e-zone-bevi:mi1iix7apqkw@brd.superproxy.io:22225',
+    'https': 'http://brd-customer-hl_31c77a7e-zone-bevi:mi1iix7apqkw@brd.superproxy.io:22225',
+}
+
+# Create a global session object with the proxy
+session = requests.Session()
+session.proxies.update(proxies)
+
 
 # Retrieve and set the OPENAI_API_KEY and other secrets
 OPENAI_API_KEY = secrets['OPENAI_API_KEY']
@@ -121,10 +136,10 @@ def query_data_api():
         return jsonify({"error": "Query text is required"}), 400
     
     query_text = data['query']
-    video_id = data.get('videoId', None)  # Extract videoId from the request data, default to None if not provided
-    conversation = data.get('conversation', [])  # Extract conversation from the request data, default to an empty list if not provided
-    chroma_path = data.get('chromaPath', None)  # Extract chroma_path from the request data, default to None if not provided
-    yt_transcript = data.get('transcript_chunk', None)  # Extract transcript from the request data, default to None if not provided
+    video_id = data.get('videoId', None)  # Extract videoId from the session data, default to None if not provided
+    conversation = data.get('conversation', [])  # Extract conversation from the session data, default to an empty list if not provided
+    chroma_path = data.get('chromaPath', None)  # Extract chroma_path from the session data, default to None if not provided
+    yt_transcript = data.get('transcript_chunk', None)  # Extract transcript from the session data, default to None if not provided
     response = query_data(query_text, video_id, conversation, chroma_path, client, yt_transcript)  # Pass query_text, video_id, conversation, and chroma_path to the query_data function
     return jsonify(response)
 
@@ -223,7 +238,7 @@ def get_summary(link_id):
 
 @app.route('/api/check_email_by_ip', methods=['POST'])
 def api_check_email_by_ip():
-    data = request.json
+    data = session.json
     ip = data.get('ip')
     
     if not ip:
