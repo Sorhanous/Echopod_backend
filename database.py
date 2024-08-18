@@ -13,7 +13,7 @@ load_dotenv()
 # Debugging information to check if .env is loaded correctly
 #print("Loaded .env file")
 
-ENV = 'e1'
+ENV = 'e2'
 
 
 #print("Environment Variable ENV:", ENV)
@@ -26,7 +26,7 @@ if ENV =="e1":
     db_port = 5433
     
 else:
-    print("******Production Environment*******")
+    #print("******Production Environment*******")
     db_user = secrets['DB_USER']
     db_password = secrets['DB_PASSWORD']
     db_host = secrets['DB_HOST']
@@ -51,7 +51,7 @@ db_pool = pool.SimpleConnectionPool(
 )
 
 def get_db_connection():
-    print("Getting DB connection")
+    #print("Getting DB connection")
     return db_pool.getconn()
 
 def put_db_connection(connection):
@@ -114,7 +114,7 @@ def upsert_user(user_data, conn):
                         user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
                     ))
                     conn.commit()
-                    print("Record updated successfully based on email.")
+                    #print("Record updated successfully based on email.")
                     return
             
             # Check for existing user based on user_ip if email is not provided
@@ -156,7 +156,7 @@ def upsert_user(user_data, conn):
                 user_data['last_login_datetime'], user_data['active'], user_data['free_trial']
             ))
             conn.commit()
-            print("New record inserted successfully.")
+            #print("New record inserted successfully.")
 
     except psycopg2.IntegrityError as e:
         conn.rollback()
@@ -201,7 +201,7 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
             # Get user_id
             cur.execute(query, (firebase_uid,))
             user_id = cur.fetchone()
-            print(f"User ID: {user_id}")
+            #print(f"User ID: {user_id}")
         return user_id[0] if user_id else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
@@ -210,7 +210,7 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-        print(f"IP: {ip}")
+        #print(f"IP: {ip}")
         
         # Check for a record with the given IP and a non-null email
         query_with_email = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NOT NULL;"
@@ -236,7 +236,7 @@ def get_user_id_by_ip(ip, conn):
     
 
 def increment_url_count(user_id, conn):
-    print("Incrementing URL count")
+    #print("Incrementing URL count")
     try:
        # print("Here we are: ", user_id)
         update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_id = %s;"
@@ -244,7 +244,7 @@ def increment_url_count(user_id, conn):
             # Ensure user_id is passed as a tuple
             cur.execute(update_query, (int(user_id),))
             conn.commit()
-            print("URL count incremented successfully")
+            #print("URL count incremented successfully")
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
@@ -318,7 +318,7 @@ def get_or_process_video_link(link_data, conn):
             existing_summary = cur.fetchone()
         
         if existing_summary:
-            print("Summary already exists for this video.")
+            #print("Summary already exists for this video.")
             #print(existing_summary)
             summ = {
                 "summary": existing_summary[0],
@@ -359,7 +359,7 @@ def get_url_count_by_ips(data, conn):
             query = "SELECT url_count FROM users WHERE user_ip = %s AND email IS NULL;"
             param = (ip,)
         
-        #print("Query:", query)
+        
         #print("Param:", param)
         
         with conn.cursor() as cur:

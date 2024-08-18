@@ -1,7 +1,59 @@
-In database.py you can set the env to:
+# 1. SET UP -------------------------------------------------------------------
+
+Make sure you install dependencies in requirements.txt `pip install -r requirements.txt`
+
+# Google has black listed all DO servers and hence we need to use residentail proxies.
+# I have paid for smartproxy.com and hard coded the proxy list in main.py. youtube transcripts otherwise won't return. 
+# keep this in mind if it fails again, you might need to change proxies 
+
+To intstall dependencies make sure you use a virtual env 1st: 
+
+Root folder: 
+`python3 -m venv venv`
+`source venv/bin/activate`
+ Make sure you install dependencies in requirements.txt `pip install -r requirements.txt`
+
+# After working on your project:
+`deactivate`
+
+
+# 2.RUN -----------------------------------------------------------------------
+
+To run, In database.py you can set the env to:
 
 - development (local postgres db): e1
 - production (RDS): e2 
 
-Make sure you install dependencies in requirements.txt `pip install -r requirements.txt`
+then run the `main.py` script. 
+
+
+# 3. DEPLOY ----------------------------------------------------------------------
+
+Note: we are using Gunicorn and Nginx for Production. SSL is also set up (90 days expiration)
+
+# Connect to your EC2 instance and navigate to your project directory
+`ssh -i "/Users/sorhan/Documents/Secret/Bevi_Linux_Host.pem" ubuntu@54.245.23.78`
+
+# Pull the latest changes from the repository
+`git pull origin main`
+
+# make sure you have tested the app and there are no errors and set the env = e2
+
+# Activate the virtual environment and install dependencies (if needed)
+`source venv/bin/activate`
+`pip install -r requirements.txt`
+
+# Restart Gunicorn to apply changes
+`sudo systemctl restart gunicorn`
+`sudo systemctl status gunicorn`
+
+# Restart Nginx (optional)
+`sudo systemctl restart nginx`
+`sudo systemctl status nginx`
+
+# Check the logs for any errors
+`sudo journalctl -u gunicorn -r`
+`sudo journalctl -u nginx -r`
+
+
 

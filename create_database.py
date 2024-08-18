@@ -27,8 +27,8 @@ def generate_data_store(combined_texts=None):
         logging.info(f"Combined into {len(combined_documents)} documents.")
         
         # Log combined documents for verification
-        for i, doc in enumerate(combined_documents):
-            logging.info(f"Combined Document {i}:\n{doc}\n{'-'*60}")
+        #for i, doc in enumerate(combined_documents):
+            #logging.info(f"Combined Document {i}:\n{doc}\n{'-'*60}")
         
         chunks = split_text(combined_documents)
         chroma_path = save_to_chroma(chunks)  # Get the path here

@@ -1,7 +1,7 @@
 from flask import Flask, jsonify, request
-import requests 
 import json
 from flask_cors import CORS
+
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 import openai
@@ -45,20 +45,7 @@ def access_secret_version(secret_id, version_id="latest"):
 
     # Return the payload as a string.
     return response.payload.data.decode("UTF-8")
-
-
-
-
-# Proxy configuration
-proxies = {
-    'http': 'http://brd-customer-hl_31c77a7e-zone-bevi:mi1iix7apqkw@brd.superproxy.io:22225',
-    'https': 'http://brd-customer-hl_31c77a7e-zone-bevi:mi1iix7apqkw@brd.superproxy.io:22225',
-}
-
-# Create a global session object with the proxy
-session = requests.Session()
-session.proxies.update(proxies)
-
+    
 
 # Retrieve and set the OPENAI_API_KEY and other secrets
 OPENAI_API_KEY = secrets['OPENAI_API_KEY']
@@ -66,6 +53,66 @@ OPENAI_API_SECRET_2 = secrets['OPENAI_API_SECRET_2']
 Model3 = secrets['Model3']
 Model4 = secrets['Model4']
 Youtube_API_KEY = secrets['Youtube_API_KEY']
+
+
+proxies_list = [
+    
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10001',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10001'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10002',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10002'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10003',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10003'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10004',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10004'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10005',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10005'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10006',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10006'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10007',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10007'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10008',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10008'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10009',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10009'
+    },
+    {
+        'http': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10010',
+        'https': 'http://user-sp6hfygjve-country-us-zip-80817:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10010'
+    }
+]
+
+
+def get_transcript_with_rotation(video_id, proxies_list):
+    for proxy in proxies_list:
+        try:
+            #print(f"Trying proxy: {proxy['http']}")
+            # Attempt to get the transcript using the proxy
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxy)
+            #print("Transcript retrieved successfully")
+            return transcript
+        except Exception as e:
+            print(f"Failed with proxy {proxy['http']}, error: {e}")
+            # Continue to the next proxy in the list
+            continue
+    raise Exception("All proxies failed.")
 
 max_chunk_length = 25000
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
@@ -136,10 +183,10 @@ def query_data_api():
         return jsonify({"error": "Query text is required"}), 400
     
     query_text = data['query']
-    video_id = data.get('videoId', None)  # Extract videoId from the session data, default to None if not provided
-    conversation = data.get('conversation', [])  # Extract conversation from the session data, default to an empty list if not provided
-    chroma_path = data.get('chromaPath', None)  # Extract chroma_path from the session data, default to None if not provided
-    yt_transcript = data.get('transcript_chunk', None)  # Extract transcript from the session data, default to None if not provided
+    video_id = data.get('videoId', None)  # Extract videoId from the request data, default to None if not provided
+    conversation = data.get('conversation', [])  # Extract conversation from the request data, default to an empty list if not provided
+    chroma_path = data.get('chromaPath', None)  # Extract chroma_path from the request data, default to None if not provided
+    yt_transcript = data.get('transcript_chunk', None)  # Extract transcript from the request data, default to None if not provided
     response = query_data(query_text, video_id, conversation, chroma_path, client, yt_transcript)  # Pass query_text, video_id, conversation, and chroma_path to the query_data function
     return jsonify(response)
 
@@ -168,7 +215,7 @@ def transcribe_youtube():
 
         try:
             # Attempt to get the transcript for the given video ID
-            content = YouTubeTranscriptApi.get_transcript(video_id)
+            content = get_transcript_with_rotation(video_id, proxies_list)
             #content = ' '.join([item['text'] for item in transcript_list])
             #print("#############################")
            # print(content)
@@ -238,7 +285,7 @@ def get_summary(link_id):
 
 @app.route('/api/check_email_by_ip', methods=['POST'])
 def api_check_email_by_ip():
-    data = session.json
+    data = request.json
     ip = data.get('ip')
     
     if not ip:
@@ -338,20 +385,25 @@ def process_video():
 
         #print("exists", exists)
         if exists:
-            combined_text = YouTubeTranscriptApi.get_transcript(video_id)
-            print("Transcript loading to chromaDB:")
+            try:
+                #print("Transcribing video...")
+                combined_text = get_transcript_with_rotation(video_id, proxies_list)
+            except Exception as e:
+                #print("Error transcribing video:", e)
+                return jsonify({"error": "Failed to transcribe video."}), 500
+            #print("Transcript loading to chromaDB:")
             chroma_path = generate_data_store(combined_text)
             response.update({"chroma_path": chroma_path}) 
             response.update({"url_count": count})
-            print(response)
+            #print(response)
             return jsonify(response), 200
         else:
             try:
-                print("Transcribing video...")
-                combined_texts = YouTubeTranscriptApi.get_transcript(video_id)
-                print("Transcript loading to chromaDB:")
+                #print("Transcribing video...")
+                combined_texts = get_transcript_with_rotation(video_id, proxies_list)
+                #print("Transcript loading to chromaDB:")
                 chroma_path = generate_data_store(combined_texts)
-                print("Transcript loaded to chromaDB")
+                #print("Transcript loaded to chromaDB")
                 prompt_0 = ""
                 prompt_1 = ""
                 prompt_2 = ""
@@ -413,7 +465,7 @@ def process_video():
                 return jsonify({"error": "No transcript found for this video."}), 404
 
 
-            print(combined_texts)
+            #print(combined_texts)
             if len(combined_texts) > 320:
                 apimodel = 'gpt-4o'
             else:
@@ -446,12 +498,12 @@ def process_video():
         if db_status != 200:
             print("Error storing YouTube link data:", db_status)
             return jsonify(response), db_status
-        print("incrementing count of : ", user_id)
+        #print("incrementing count of : ", user_id)
         increment_url_count(user_id, conn)
         response.update({"summary": answer})
         response.update({"url_count": count})
         response.update({"chroma_path": chroma_path}) 
-        print(response)
+        #print(response)
         return jsonify(response), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
