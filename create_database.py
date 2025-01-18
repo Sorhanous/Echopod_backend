@@ -6,12 +6,12 @@ from langchain_openai import OpenAIEmbeddings
 from langchain_community.vectorstores import Chroma
 import os
 import shutil
-import logging
+import  logging
 import time
 import uuid
 
-# Set up logging
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+# Set up # # logging
+# logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 
 BASE_CHROMA_PARENT_PATH = "chroma"
 BASE_CHROMA_PATH = os.path.join(BASE_CHROMA_PARENT_PATH, "chroma")
@@ -90,7 +90,7 @@ def split_text(documents: list[dict]):
                 chunk.metadata["original_start"] = document_dict["start"]
             
             chunks.extend(document_chunks)
-            logging.info(f"Document starting at {document.metadata['start']} split into {len(document_chunks)} chunks.")
+          #  logging.info(f"Document starting at {document.metadata['start']} split into {len(document_chunks)} chunks.")
 
         logging.info(f"Split {len(documents)} documents into {len(chunks)} total chunks.")
         return chunks
@@ -109,7 +109,7 @@ def save_to_chroma(chunks: list[Document]):
         # Clear out the database first if it exists.
         if os.path.exists(unique_chroma_path):
             shutil.rmtree(unique_chroma_path)
-        logging.info(f"Deleted existing database at {unique_chroma_path}.")
+       # logging.info(f"Deleted existing database at {unique_chroma_path}.")
         
         # Create a new DB from the documents.
         db = Chroma.from_documents(
@@ -141,12 +141,12 @@ def cleanup_old_databases(base_path=BASE_CHROMA_PARENT_PATH, age_limit_hours=1):
             if os.path.isdir(dir_path):
                 creation_time = os.path.getctime(dir_path)
                 age_seconds = current_time - creation_time
-                logging.info(f"Directory {dir_path} age: {age_seconds / 3600:.2f} hours")
+             #   logging.info(f"Directory {dir_path} age: {age_seconds / 3600:.2f} hours")
                 
                 if age_seconds > 60:
                     try:
                         shutil.rmtree(dir_path)
-                        logging.info(f"Deleted old database at {dir_path}")
+                      #  logging.info(f"Deleted old database at {dir_path}")
                     except Exception as e:
                         logging.error(f"Error deleting directory {dir_path}: {e}")
 

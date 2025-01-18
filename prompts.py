@@ -1,7 +1,7 @@
 structured_prompt = f"""
 
 *** Follow these Instructions: ***
-
+As you can see the first thing is the video title and one of many things i need (described below) is to read the transcript and give a click bait score 0-10 for the title vs. the content. what would a human score it after watching the video because of the title, disapointed? 0, satisfied? 10. 
 ****>>>> "key_conclusions": Provide a list of items each start with "-". end with a period '. ' and It needs to be all the key take aways and conclusions of the transcript. Use your own judgment to come up with top 3-4 key points/conclusions. They cant be vague.  ****
 this key_conclusions  needs to always be in this format mentioend ^ above. there needs to be a space after the period.
 
@@ -66,8 +66,11 @@ Expected JSON output:
 Each item under categories must always have "name", "topic", "description", and "start_time" as shown below.
 
 ***always return the following format or our app will break if any of the parameters are missing***
+*****click bait score is between 0-10****
 
+response format: 
 {{
+
   "key_conclusions": "-item1 -item2 -item3 -item4 -item5 ....",
   "all_mentions": {{
     "<category 1>": [
@@ -173,6 +176,7 @@ Each item under categories must always have "name", "topic", "description", and 
   }},
   "sentiment_analysis": "The overall sentiment is...or null if none"",
   "reliability_score": "The reliability of the advice is...or null if none"",
+  "click_bait_score": "give a score between 0-10 based on the title of the video and the content of the video"
 }}
 
 Each item under categories must always have "name", "topic", "description", and "start_time" as shown above.

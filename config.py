@@ -34,6 +34,7 @@ class Config:
     MODEL3 = secrets['Model3']
     MODEL4 = secrets['Model4']
     YOUTUBE_API_KEY = secrets['Youtube_API_KEY']
+    YOUTUBE_API_KEY_2 = secrets['youtube_api_key_2']
 
 class ProductionConfig(Config):
     DEBUG = False

@@ -1,4 +1,4 @@
-import json
+import json, time
 import psycopg2
 from psycopg2 import pool
 from config import secrets  # Import secrets from config
@@ -6,17 +6,14 @@ from dotenv import load_dotenv
 import os
 from psycopg2 import sql
 from datetime import datetime
+from contextlib import contextmanager
+import threading
+from psycopg2.pool import ThreadedConnectionPool
 
 # Load environment variables from .env file
 load_dotenv()
 
-# Debugging information to check if .env is loaded correctly
-#print("Loaded .env file")
-
-ENV = 'e2'
-
-
-#print("Environment Variable ENV:", ENV)
+ENV = 'e1'
 
 if ENV =="e1":
     db_user = "postgres"
@@ -26,23 +23,17 @@ if ENV =="e1":
     db_port = 5433
     
 else:
-    #print("******Production Environment*******")
     db_user = secrets['DB_USER']
     db_password = secrets['DB_PASSWORD']
     db_host = secrets['DB_HOST']
     db_name = secrets['DB_NAME']
     db_port = 5432
-# Database connection details
-"""db_user = secrets['DB_USER']
-db_password = secrets['DB_PASSWORD']
-db_host = secrets['DB_HOST']
-db_name = secrets['DB_NAME']
-db_port = 5432"""
 
+connection_usage = {}
 # Initialize the connection pool
-db_pool = pool.SimpleConnectionPool(
-    minconn=1,
-    maxconn=30,
+db_pool = ThreadedConnectionPool(
+    minconn=20,     # Increased minimum connections
+    maxconn=100,    # Increased maximum connections
     user=db_user,
     password=db_password,
     host=db_host,
@@ -50,17 +41,59 @@ db_pool = pool.SimpleConnectionPool(
     dbname=db_name
 )
 
-def get_db_connection():
-    #print("Getting DB connection")
-    return db_pool.getconn()
+@contextmanager
+def get_connection_context():
+    """
+    Context manager for safe handling of database connections
+    """
+    conn = None
+    try:
+        conn = get_db_connection()
+        yield conn
+        if not conn.closed:
+            conn.commit()
+    except Exception as e:
+        if conn and not conn.closed:
+            conn.rollback()
+        raise e
+    finally:
+        if conn and not conn.closed:
+            put_db_connection(conn)
 
-def put_db_connection(connection):
-    db_pool.putconn(connection)
+def get_db_connection():
+    """
+    Get a connection from the pool with retry logic
+    """
+    max_retries = 3
+    retry_delay = 0.1  # 100ms
+    
+    for attempt in range(max_retries):
+        try:
+            conn = db_pool.getconn(key=id(threading.current_thread()))
+            connection_usage[conn] = time.time()
+            return conn
+        except pool.PoolError:
+            if attempt < max_retries - 1:
+                time.sleep(retry_delay)
+                continue
+            raise
+
+def put_db_connection(conn):
+    """
+    Return a connection to the pool with safety checks
+    """
+    if conn and not conn.closed:
+        try:
+            db_pool.putconn(conn, key=id(threading.current_thread()))
+        except Exception as e:
+            print(f"Error returning connection to pool: {e}")
+            try:
+                conn.close()
+            except:
+                pass
 
 def close_db_pool():
     db_pool.closeall()
-
-
 
 def upsert_user(user_data, conn):
     # Ensure all required keys are present and properly set in user_data
@@ -114,7 +147,6 @@ def upsert_user(user_data, conn):
                         user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
                     ))
                     conn.commit()
-                    #print("Record updated successfully based on email.")
                     return
             
             # Check for existing user based on user_ip if email is not provided
@@ -156,7 +188,6 @@ def upsert_user(user_data, conn):
                 user_data['last_login_datetime'], user_data['active'], user_data['free_trial']
             ))
             conn.commit()
-            #print("New record inserted successfully.")
 
     except psycopg2.IntegrityError as e:
         conn.rollback()
@@ -174,8 +205,6 @@ def upsert_user(user_data, conn):
         print(f"UnexpectedError: {error_message}")
         raise
 
-
-
 def get_url_count_by_id(id, conn):
     try:
         query = "SELECT url_count FROM users WHERE user_id = %s;"
@@ -190,18 +219,10 @@ def get_url_count_by_id(id, conn):
     
 def get_user_id_by_firebase_uid(firebase_uid, conn):
     try:
-        
         query = "SELECT user_id FROM users WHERE firebase_uid = %s;"
-       # update_query = "UPDATE users SET url_count = url_count + 1 WHERE firebase_uid = %s;"
         with conn.cursor() as cur:
-            # Increment url_count
-          #  cur.execute(update_query, (firebase_uid,))
-          #  conn.commit()
-            
-            # Get user_id
             cur.execute(query, (firebase_uid,))
             user_id = cur.fetchone()
-            #print(f"User ID: {user_id}")
         return user_id[0] if user_id else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
@@ -210,9 +231,6 @@ def get_user_id_by_firebase_uid(firebase_uid, conn):
     
 def get_user_id_by_ip(ip, conn):
     try:
-        #print(f"IP: {ip}")
-        
-        # Check for a record with the given IP and a non-null email
         query_with_email = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NOT NULL;"
         with conn.cursor() as cur:
             cur.execute(query_with_email, (ip,))
@@ -221,7 +239,6 @@ def get_user_id_by_ip(ip, conn):
         if user_with_email:
             return user_with_email[0]
         
-        # If no record with a non-null email, check for a record with a null email
         query_without_email = "SELECT user_id FROM users WHERE user_ip = %s AND email IS NULL;"
         with conn.cursor() as cur:
             cur.execute(query_without_email, (ip,))
@@ -233,25 +250,49 @@ def get_user_id_by_ip(ip, conn):
         conn.rollback()  # Roll back the transaction in case of error
         return None
 
-    
-
 def increment_url_count(user_id, conn):
-    #print("Incrementing URL count")
     try:
-       # print("Here we are: ", user_id)
+        if conn.closed:
+            print("Connection is closed. Cannot proceed.")
+            return None
+
+        # Get current count
+        with conn.cursor() as cur:
+            cur.execute("SELECT url_count FROM users WHERE user_id = %s;", (int(user_id),))
+            current_count = cur.fetchone()[0]
+            print(f"[DEBUG] Current count before increment: {current_count}")
+
+        # Proceed with updating the URL count
         update_query = "UPDATE users SET url_count = url_count + 1 WHERE user_id = %s;"
         with conn.cursor() as cur:
-            # Ensure user_id is passed as a tuple
             cur.execute(update_query, (int(user_id),))
             conn.commit()
-            #print("URL count incremented successfully")
+            
+            # Get new count
+            cur.execute("SELECT url_count FROM users WHERE user_id = %s;", (int(user_id),))
+            new_count = cur.fetchone()[0]
+            print(f"[DEBUG] New count after increment: {new_count}")
+    
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
+        print("Rolling back the transaction due to the error.")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+    
+    except Exception as e:
+        print(f"Unexpected error: {e}")
+        print("Rolling back the transaction due to the unexpected error.")
         conn.rollback()  # Roll back the transaction in case of error
         return None
 
+    finally:
+        # Return the connection to the pool
+        db_pool.putconn(conn)
+
 def insert_youtube_link(link_data, conn):
     try:
+        print(f"Received link_data: {link_data}")
+        
         check_query = """
         SELECT 1 FROM youtubelinks WHERE video_url = %(video_url)s;
         """
@@ -259,23 +300,33 @@ def insert_youtube_link(link_data, conn):
             cur.execute(check_query, link_data)
             exists = cur.fetchone()
         if exists:
-            return False, "Link already exists for this user."
+            return True, "Video link already exists"
 
-        insert_query = """
+        # Dynamically build the insert query based on available fields
+        available_fields = []
+        values = []
+        for field in ['user_id', 'video_url', 'channel_url', 'video_description', 
+                     'video_summary_json', 'title', 'default_thumbnail', 
+                     'medium_thumbnail', 'channel_name', 'published_date']:
+            if field in link_data:
+                available_fields.append(field)
+                values.append(f'%({field})s')
+
+        insert_query = f"""
         INSERT INTO youtubelinks (
-            user_id, video_url, channel_url, video_description, video_summary_json
+            {', '.join(available_fields)}
         ) VALUES (
-            %(user_id)s, %(video_url)s, 'placeholder_for_channel_url', 'placeholder_for_video_description', %(video_summary_json)s
+            {', '.join(values)}
         )
         """
+        
         with conn.cursor() as cur:
             cur.execute(insert_query, link_data)
         conn.commit()
         return True, "Video link added successfully."
-    except psycopg2.DatabaseError as e:
-        print(f"Database error: {e}")
-        if conn:
-            conn.rollback()
+    except Exception as e:
+        print(f"Error in insert_youtube_link: {str(e)}")
+        conn.rollback()
         return False, str(e)
 
 def store_youtube_link_data(user_id, youtube_url, video_summary):
@@ -305,8 +356,6 @@ def store_youtube_link_data(user_id, youtube_url, video_summary):
     finally:
         put_db_connection(conn)  # Ensure connection is always returned to the pool
 
-
-
 def get_or_process_video_link(link_data, conn):
     try:
         # Check if video summary already exists
@@ -318,8 +367,7 @@ def get_or_process_video_link(link_data, conn):
             existing_summary = cur.fetchone()
         
         if existing_summary:
-            #print("Summary already exists for this video.")
-            #print(existing_summary)
+            print("Summary already exists for this video.")
             summ = {
                 "summary": existing_summary[0],
                 "link_id": existing_summary[1]
@@ -332,46 +380,41 @@ def get_or_process_video_link(link_data, conn):
                 url_count = cur.fetchone()
             
             if url_count:
-                #print("URL Count:", url_count[0])
                 summ["url_count"] = url_count[0]
             else:
                 print("URL Count not found for user_id:", link_data['user_id'])
             
-            #print(summ)
+            print(summ)
             
             return True, summ
-        
+     
         return False, "Continue with processing"
     
     except psycopg2.DatabaseError as e:
+        conn.rollback() 
         return False, str(e)
-    
+        
 def get_url_count_by_ips(data, conn):
     try:
         ip = data.get('ip')
         current_user = data.get('currentUser')
-        #print(">>>>>>>>>>>>>" , current_user)
         if current_user and current_user.get('email'):
-
             query = "SELECT url_count FROM users WHERE email = %s;"
             param = (current_user['email'],)
         else:
             query = "SELECT url_count FROM users WHERE user_ip = %s AND email IS NULL;"
             param = (ip,)
         
-        
-        #print("Param:", param)
-        
         with conn.cursor() as cur:
             cur.execute(query, param)
             url_count = cur.fetchone()
-            #print(f"URL Count: {url_count}")
         
         return url_count[0] if url_count else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         conn.rollback()  # Roll back the transaction in case of error
         return None
+
 def has_email_by_ip(ip, conn):
     try:
         query = "SELECT 1 FROM users WHERE user_ip = %s AND email IS NOT NULL;"
@@ -383,3 +426,103 @@ def has_email_by_ip(ip, conn):
         print(f"Database error: {e}")
         conn.rollback()
         return False
+
+def update_total_time_saved(user_email, time_saved, conn):
+    try:
+        print("*******************************Updating total time saved for user_id:", str(time_saved))
+        update_query = "UPDATE users SET total_time_saved = total_time_saved + %s WHERE email = %s;"
+        with conn.cursor() as cur:
+            cur.execute(update_query, (time_saved, user_email))
+            conn.commit()
+            print("Total time saved updated successfully")
+    except psycopg2.DatabaseError as e:
+        print(f"Database error: {e}")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+    finally:
+        if conn:
+            db_pool.putconn(conn)
+
+def get_total_time_saved_by_email(user_email, conn):
+    try:
+        query = "SELECT total_time_saved FROM users WHERE email = %s;"
+        with conn.cursor() as cur:
+            cur.execute(query, (user_email,))
+            total_time_saved = cur.fetchone()
+        return total_time_saved[0] if total_time_saved else None
+    except psycopg2.DatabaseError as e:
+        print(f"Database error: {e}")
+        conn.rollback()  # Roll back the transaction in case of error
+        return None
+
+def get_video_details(conn, limit=15):
+    """
+    Fetches video details needed for the frontend display.
+    Returns: list of dictionaries containing video information
+    """
+    try:
+        query = """
+        SELECT 
+            video_url,
+            title,
+            default_thumbnail,
+            medium_thumbnail,
+            channel_name,
+            TO_CHAR(published_date, 'Mon DD, YYYY') as published_date
+        FROM youtubelinks
+        ORDER BY published_date DESC
+        LIMIT %s;
+        """
+        
+        with conn.cursor() as cur:
+            cur.execute(query, (limit,))
+            columns = [desc[0] for desc in cur.description]
+            videos = []
+            for row in cur.fetchall():
+                video_dict = dict(zip(columns, row))
+                # Ensure all required fields are present, even if null
+                video_dict.setdefault('youtube_url', None)
+                video_dict.setdefault('title', 'Untitled Video')
+                video_dict.setdefault('default_thumbnail', None)
+                video_dict.setdefault('channel_name', 'Unknown Channel')
+                video_dict.setdefault('published_date', 'Unknown date')
+                videos.append(video_dict)
+            
+            return videos
+            
+    except Exception as e:
+        print(f"Error fetching videos: {e}")
+        raise
+
+def get_pool_status():
+    """
+    Get current status of the connection pool
+    """
+    return {
+        "used_connections": len(db_pool._used),
+        "free_connections": len(db_pool._pool),
+        "total_connections": len(db_pool._pool) + len(db_pool._used)
+    }
+
+def cleanup_stale_connections():
+    """
+    Clean up any stale connections in the pool
+    """
+    try:
+        with get_connection_context() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT 1")
+    except Exception as e:
+        print(f"Error in connection cleanup: {e}")
+
+def start_cleanup_timer():
+    cleanup_thread = threading.Thread(target=cleanup_stale_connections, daemon=True)
+    cleanup_thread.start()
+
+import atexit
+
+# Register cleanup on shutdown
+atexit.register(close_db_pool)
+
+# Start the cleanup timer
+start_cleanup_timer()
