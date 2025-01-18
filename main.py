@@ -186,14 +186,12 @@ def search_youtube():
 
     try:
         google_api_url = f'https://www.googleapis.com/youtube/v3/search?part=snippet&type=video&q={query}&maxResults=10&key={Youtube_API_KEY_2}'
-        response = requests.get(google_api_url)
+        response = make_proxied_request(google_api_url, proxies_list)
         print("Google API response status code:", response.status_code)
         response_data = response.json()
-        #print("Google API response data:", response_data)
         
         video_details = []
         for item in response_data.get('items', []):
-            print("Item contents:>>>>>>>>>>>>>>>>>>>", item)  # Print full item contents
             video_id = item['id']['videoId']
             snippet = item['snippet']
             thumbnails = snippet['thumbnails']
@@ -205,12 +203,11 @@ def search_youtube():
                 "medium_thumbnail": thumbnails.get('medium', {}).get('url'),
                 "channel_name": snippet['channelTitle'],
                 "published_date": published_date,
-                #"duration": "N/A"  # Duration is not available in search results
             })
         
         return jsonify(video_details), 200
     except Exception as e:
-        print("Exception occurred:", str(e))
+        logger.error(f"Exception in search_youtube: {str(e)}")
         return jsonify({"error": str(e)}), 500
 
 @app.route('/api/get_latest_news', methods=['POST'])
@@ -257,18 +254,18 @@ def get_latest_news():
 
 @app.route('/api/get_youtube_comments', methods=['POST'])
 def get_youtube_comments():
-    print('Starting get_youtube_comments function')
+    logger.info('Starting get_youtube_comments function')
     data = request.get_json()
     video_id = data.get('video_id')
     
     if not video_id:
-        print('Error: No video ID provided')
+        logger.error('Error: No video ID provided')
         return jsonify({"error": "Video ID is required"}), 400
 
     try:
         google_api_url = f'https://www.googleapis.com/youtube/v3/commentThreads?part=snippet&videoId={video_id}&key={Youtube_API_KEY_2}&order=relevance&maxResults=30'
-        response = requests.get(google_api_url)
-        print(f"Google API response status code: {response.status_code}")
+        response = make_proxied_request(google_api_url, proxies_list)
+        logger.info(f"Google API response status code: {response.status_code}")
         response_data = response.json()
         
         comments = []
@@ -325,33 +322,26 @@ def get_youtube_comments():
 @app.route('/api/extract_video_ids', methods=['POST'])
 def extract_video_ids():
     data = request.get_json()
-   # print("Received data:", data)
     youtube_url = data.get('youtube_url')
-   # print("Extracted youtube_url:", youtube_url)
     if not youtube_url:
         return jsonify({"error": "youtube_url is required"}), 400
 
     try:
         video_ids = extract_video_ids_from_youtube(youtube_url)
         extracted_video_id = extract_video_id(youtube_url)
-       # videoidlist = video_ids.copy()
         if extracted_video_id in video_ids:
             video_ids.remove(extracted_video_id)
-     #   print("Extracted video_ids:", video_ids)
+            
         if len(video_ids) == 1:
             video_ids_str = video_ids[0]
         else:
             video_ids_str = ','.join(video_ids)
             
-      #  print("Formatted video_ids_str:", video_ids_str)
-            
         google_api_url = f'https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={video_ids_str}&key={Youtube_API_KEY_2}'
-       
         
-        response = requests.get(google_api_url)
-        print("Google API response status code:", response.status_code)
+        response = make_proxied_request(google_api_url, proxies_list)
+        logger.info("Google API response status code: %s", response.status_code)
         response_data = response.json()
-       # print("Google API response data:", response_data)
         
         video_details = []
         for item in response_data.get('items', []):
@@ -417,25 +407,23 @@ def get_total_time_saved():
 @app.route('/api/extract_video_details', methods=['POST'])
 def extract_video_data():
     data = request.get_json()
-   # print("Received data:", data)
     video_id = data.get('video_id')
     user_email = data.get('user_email')
-    print("Extracted video_id:", video_id)
+    logger.info(f"Extracted video_id: {video_id}")
+    
     if not video_id:
         return jsonify({"error": "video_id is required"}), 400
 
     try:
-       
         google_api_url = f'https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={video_id}&key={Youtube_API_KEY_2}'
-        print("Google API URL:", google_api_url)
+        logger.info("Google API URL: %s", google_api_url)
         
-        response = requests.get(google_api_url)
-        print("Google API response status code:", response.status_code)
+        response = make_proxied_request(google_api_url, proxies_list)
+        logger.info("Google API response status code: %s", response.status_code)
         response_data = response.json()
 
-        
         if 'items' not in response_data or not response_data['items']:
-            print("No video details found in response data")
+            logger.warning("No video details found in response data")
             return jsonify({"error": "No video details found"}), 404
         
         video_details = response_data['items'][0]
@@ -1010,6 +998,26 @@ def get_db_connection_context():
     finally:
         if conn:
             put_db_connection(conn)
+
+def make_proxied_request(url, proxies_list):
+    """
+    Make a request using a rotating proxy list
+    """
+    for proxy in proxies_list:
+        try:
+            response = requests.get(url, proxies=proxy, timeout=10)
+            if response.status_code == 200:
+                return response
+        except Exception as e:
+            logger.error(f"Proxy request failed: {str(e)}")
+            continue
+    
+    # If all proxies fail, try without proxy
+    try:
+        return requests.get(url)
+    except Exception as e:
+        logger.error(f"Direct request failed: {str(e)}")
+        raise
 
 if __name__ == '__main__':
     app.run(host='0.0.0.0', port=8080)

@@ -13,7 +13,7 @@ from psycopg2.pool import ThreadedConnectionPool
 # Load environment variables from .env file
 load_dotenv()
 
-ENV = 'e3'
+ENV = 'e1'
 
 if ENV =="e1":
     db_user = "postgres"
