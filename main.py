@@ -72,25 +72,48 @@ stripe.api_key = secrets.get('Stripe_API_KEY')
 #print(stripe.api_key)
 
 proxies_list = [
-    
-{
-    'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10001',
-    'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@us.smartproxy.com:10002'
-},
-
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10001',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10001'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10002',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10002'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10003',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10003'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10004',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10004'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10005',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10005'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10006',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10006'
+    },
+    {
+        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10007',
+        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10007'
+    }
 ]
+
 
 
 def get_transcript_with_rotation(video_id, proxies_list):
     for proxy in proxies_list:
         try:
-            #print(f"Trying proxy: {proxy['http']}")
+            print(f"Trying proxy: {proxy['http']}")
             # Attempt to get the transcript using the proxy
             transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies_list)
             #print("Transcript retrieved successfully")
             return transcript
         except Exception as e:
-            print(f"Failed with proxy {proxy['http']}, error: {e}")
+            print(f"HEREEEEEE Failed with proxy {proxy['http']}, error: {e}")
             # Continue to the next proxy in the list
             continue
     raise Exception("All proxies failed.")
@@ -602,6 +625,8 @@ def transcribe_youtube():
 @app.route('/api/user', methods=['POST'])
 def store_user():
     user_info = request.get_json()
+    print("USERUSER")
+    print(user_info)
     try:
         with get_db_connection_context() as conn:
             upsert_user(user_info, conn)
@@ -700,6 +725,8 @@ def process_video(conn):
         if not data:
             return jsonify({"error": "No data sent"}), 400
 
+        #print("DATA")
+        #print(data)
         # Extract and validate required fields
         required_fields = {
             'youtube_url': data.get('youtube_url'),

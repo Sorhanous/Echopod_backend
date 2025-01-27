@@ -96,114 +96,143 @@ def close_db_pool():
     db_pool.closeall()
 
 def upsert_user(user_data, conn):
+    # Add logging to track the flow and data
+    print(f"Incoming user_data: {user_data}")
+
     # Ensure all required keys are present and properly set in user_data
     required_keys = [
         'user_ip', 'firebase_uid', 'name', 'display_name', 'email', 'email_verified',
-        'photo_url', 'signup_datetime', 'last_login_datetime', 'active', 'free_trial'
+        'photo_url', 'signup_datetime', 'last_login_datetime', 'active', 'free_trial', 'url_count'
     ]
 
+    # Initialize missing fields with None
     for key in required_keys:
         if key not in user_data:
             user_data[key] = None
+            print(f"Initialized missing key: {key}")
 
-    # Convert boolean to integer for active and free_trial fields
-    user_data['active'] = 1 if user_data['active'] else 0
-    user_data['free_trial'] = 1 if user_data['free_trial'] else 0
+    # Handle empty strings
+    string_fields = ['email', 'user_ip', 'name', 'display_name', 'photo_url', 'firebase_uid']
+    for field in string_fields:
+        if user_data.get(field) == '':
+            user_data[field] = None
+            print(f"Converted empty string to None for field: {field}")
 
-    # Ensure email and user_ip are not empty
-    if user_data['email'] == '':
-        user_data['email'] = None
-    if user_data['user_ip'] == '':
-        user_data['user_ip'] = None
+    # Convert email_verified to proper boolean
+    if 'email_verified' in user_data:
+        user_data['email_verified'] = bool(user_data['email_verified'])
+        print(f"Converted email_verified to boolean: {user_data['email_verified']}")
 
-    # Ensure signup_datetime and last_login_datetime have valid values
-    if user_data['signup_datetime'] is None or user_data['signup_datetime'] == '':
-        user_data['signup_datetime'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if user_data['last_login_datetime'] is None or user_data['last_login_datetime'] == '':
-        user_data['last_login_datetime'] = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    # Convert active and free_trial to integers (they should stay as integers)
+    for field in ['active', 'free_trial']:
+        if field in user_data:
+            user_data[field] = 1 if user_data[field] else 0
+            print(f"Converted {field} to integer: {user_data[field]}")
 
-    # Check conditions
+    # Ensure datetime fields have valid values
+    current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if not user_data['signup_datetime']:
+        user_data['signup_datetime'] = current_time
+    if not user_data['last_login_datetime']:
+        user_data['last_login_datetime'] = current_time
+
+    # Initialize url_count if not present or None
+    if user_data['url_count'] is None:
+        user_data['url_count'] = 0
+
+    # Validate critical data
     if user_data['email'] is None and user_data['user_ip'] is None:
-        print("Both email and user_ip are NULL. No action taken.")
-        return
+        error_msg = "Both email and user_ip are NULL. No action taken."
+        print(error_msg)
+        raise ValueError(error_msg)
 
     try:
         with conn.cursor() as cur:
-            # Check for existing user based on email if email is provided
+            # First try to find user by email
             if user_data['email'] is not None:
                 cur.execute("SELECT user_id FROM Users WHERE email = %s", (user_data['email'],))
                 result = cur.fetchone()
                 if result:
                     existing_user_id = result[0]
+                    print(f"Found existing user by email with ID: {existing_user_id}")
                     update_query = """
                     UPDATE Users
                     SET user_ip = %s, firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
-                        photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
+                        photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s,
+                        url_count = %s
                     WHERE user_id = %s
                     """
                     cur.execute(update_query, (
                         user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                         user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
-                        user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
+                        user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], 
+                        user_data['url_count'], existing_user_id
                     ))
                     conn.commit()
-                    return
-            
-            # Check for existing user based on user_ip if email is not provided
-            if user_data['email'] is None and user_data['user_ip'] is not None:
+                    print(f"Updated existing user {existing_user_id}")
+                    return True, "User updated successfully"
+
+            # Then try to find user by IP if email lookup failed
+            if user_data['user_ip'] is not None:
                 cur.execute("SELECT user_id, email FROM Users WHERE user_ip = %s", (user_data['user_ip'],))
                 result = cur.fetchone()
                 if result:
                     existing_user_id, existing_email = result
                     if existing_email is None:
+                        print(f"Found existing user by IP with ID: {existing_user_id}")
                         update_query = """
                         UPDATE Users
                         SET firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
-                            photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
+                            photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s,
+                            url_count = %s
                         WHERE user_id = %s
                         """
                         cur.execute(update_query, (
                             user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                             user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
-                            user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], existing_user_id
+                            user_data['last_login_datetime'], user_data['active'], user_data['free_trial'],
+                            user_data['url_count'], existing_user_id
                         ))
                         conn.commit()
-                        print("Record updated successfully based on user_ip with no email.")
-                        return
+                        print(f"Updated existing user {existing_user_id} based on IP")
+                        return True, "User updated successfully"
                     else:
-                        print("Record with this user_ip already exists and has an email. No action taken.")
-                        return
-            
-            # Insert new user if no existing user is found
+                        print("Found user with IP but they have an email, no update performed")
+                        return True, "No update needed - user exists with email"
+
+            # If no existing user found, insert new user
+            print("No existing user found, inserting new user")
             insert_query = """
             INSERT INTO Users (
                 user_ip, firebase_uid, name, display_name, email, email_verified, photo_url, signup_datetime,
-                last_login_datetime, active, free_trial
+                last_login_datetime, active, free_trial, url_count
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(insert_query, (
                 user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                 user_data['email'], user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
-                user_data['last_login_datetime'], user_data['active'], user_data['free_trial']
+                user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], user_data['url_count']
             ))
             conn.commit()
+            print("Successfully inserted new user")
+            return True, "New user created successfully"
 
     except psycopg2.IntegrityError as e:
         conn.rollback()
-        error_message = str(e)
-        print(f"IntegrityError: {error_message}")
-        raise
+        error_message = f"IntegrityError: {str(e)}"
+        print(error_message)
+        return False, error_message
     except psycopg2.Error as e:
         conn.rollback()
-        error_message = str(e)
-        print(f"DatabaseError: {error_message}")
-        raise
+        error_message = f"DatabaseError: {str(e)}"
+        print(error_message)
+        return False, error_message
     except Exception as e:
         conn.rollback()
-        error_message = str(e)
-        print(f"UnexpectedError: {error_message}")
-        raise
+        error_message = f"UnexpectedError: {str(e)}"
+        print(error_message)
+        return False, error_message
 
 def get_url_count_by_id(id, conn):
     try:
@@ -276,22 +305,18 @@ def increment_url_count(user_id, conn):
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
         print("Rolling back the transaction due to the error.")
-        conn.rollback()  # Roll back the transaction in case of error
+        conn.rollback()
         return None
     
     except Exception as e:
         print(f"Unexpected error: {e}")
         print("Rolling back the transaction due to the unexpected error.")
-        conn.rollback()  # Roll back the transaction in case of error
+        conn.rollback()
         return None
-
-    finally:
-        # Return the connection to the pool
-        db_pool.putconn(conn)
 
 def insert_youtube_link(link_data, conn):
     try:
-        print(f"Received link_data: {link_data}")
+       # print(f"Received link_data: {link_data}")
         
         check_query = """
         SELECT 1 FROM youtubelinks WHERE video_url = %(video_url)s;
@@ -384,7 +409,7 @@ def get_or_process_video_link(link_data, conn):
             else:
                 print("URL Count not found for user_id:", link_data['user_id'])
             
-            print(summ)
+           # print(summ)
             
             return True, summ
      
