@@ -36,3 +36,6 @@ share/python-wheels/
 .vscode/
 *.sublime-project
 *.sublime-workspace
+
+# Ignore Chroma database files
+chroma/
