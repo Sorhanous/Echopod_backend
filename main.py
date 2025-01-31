@@ -3,7 +3,6 @@ import requests
 import datetime
 import json
 from flask_cors import CORS
-
 from youtube_transcript_api import YouTubeTranscriptApi
 from youtube_transcript_api._errors import TranscriptsDisabled, NoTranscriptFound
 import openai
@@ -25,6 +24,7 @@ from contextlib import contextmanager
 from functools import wraps
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
+import traceback
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -71,52 +71,45 @@ stripe.api_key = secrets.get('Stripe_API_KEY')
 
 #print(stripe.api_key)
 
-proxies_list = [
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10001',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10001'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10002',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10002'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10003',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10003'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10004',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10004'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10005',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10005'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10006',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10006'
-    },
-    {
-        'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10007',
-        'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@gate.smartproxy.com:10007'
-    }
-]
+proxies_list = {
+    'http': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@state.smartproxy.com:10000',
+    'https': 'http://sp6hfygjve:UnvAe7wcT5Z8n_wv7x@state.smartproxy.com:10000'
+    
+}
 
 
 
 def get_transcript_with_rotation(video_id, proxies_list):
-    for proxy in proxies_list:
-        try:
-            print(f"Trying proxy: {proxy['http']}")
-            # Attempt to get the transcript using the proxy
-            transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies_list)
-            #print("Transcript retrieved successfully")
-            return transcript
-        except Exception as e:
-            print(f"HEREEEEEE Failed with proxy {proxy['http']}, error: {e}")
-            # Continue to the next proxy in the list
-            continue
-    raise Exception("All proxies failed.")
+    logger.info("Starting get_transcript_with_rotation")
+    try:
+        proxies = [proxies_list] if isinstance(proxies_list, dict) else proxies_list
+        logger.info(f"Proxies type: {type(proxies)}")
+        
+        for proxy in proxies:
+            try:
+                logger.info(f"Trying proxy: {proxy}")
+                print("video_id")
+                print(video_id)
+                transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxy)
+                logger.info(f"Raw transcript type: {type(transcript)}")
+                logger.info(f"First item of raw transcript: {transcript[0] if transcript else 'empty'}")
+                
+                if transcript and isinstance(transcript, list):
+                    formatted_transcript = [{
+                        'text': item.get('text', ''),
+                        'start': item.get('start', 0)
+                    } for item in transcript]
+                    logger.info("Successfully formatted transcript")
+                    return formatted_transcript
+                
+            except Exception as e:
+                logger.error(f"Proxy attempt failed: {str(e)}")
+                continue
+                
+    except Exception as e:
+        logger.error(f"Transcript retrieval failed: {str(e)}")
+        logger.error(f"Error traceback: {traceback.format_exc()}")
+        raise
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
@@ -344,67 +337,118 @@ def get_youtube_comments():
 
 @app.route('/api/extract_video_ids', methods=['POST'])
 def extract_video_ids():
+    logger.info("Starting extract_video_ids endpoint")
+    
     data = request.get_json()
     youtube_url = data.get('youtube_url')
+    logger.info(f"Received youtube_url: {youtube_url}")
+    
     if not youtube_url:
+        logger.error("No youtube_url provided in request")
         return jsonify({"error": "youtube_url is required"}), 400
 
     try:
+        logger.info("Attempting to extract video IDs from YouTube URL")
         video_ids = extract_video_ids_from_youtube(youtube_url)
+        logger.info(f"Extracted video IDs: {video_ids}")
+        
         extracted_video_id = extract_video_id(youtube_url)
+        logger.info(f"Main video ID extracted: {extracted_video_id}")
+        
         if extracted_video_id in video_ids:
             video_ids.remove(extracted_video_id)
+            logger.info(f"Removed main video ID from list. Remaining IDs: {video_ids}")
             
         if len(video_ids) == 1:
             video_ids_str = video_ids[0]
         else:
             video_ids_str = ','.join(video_ids)
+        logger.info(f"Final video IDs string: {video_ids_str}")
             
         google_api_url = f'https://www.googleapis.com/youtube/v3/videos?part=snippet,contentDetails&id={video_ids_str}&key={Youtube_API_KEY_2}'
+        logger.info("Making request to Google API")
+        logger.info(f"Google API URL: {google_api_url}")
         
         response = make_proxied_request(google_api_url, proxies_list)
-        logger.info("Google API response status code: %s", response.status_code)
+        logger.info(f"Google API response status code: {response.status_code}")
+        
         response_data = response.json()
+        logger.debug(f"Google API response data: {response_data}")
         
         video_details = []
+        logger.info("Processing video details from response")
+        
         for item in response_data.get('items', []):
-           # if item['contentDetails']['caption'] == 'false':
-            #   continue
-            video_id = item['id']
-            snippet = item['snippet']
-            thumbnails = snippet['thumbnails']
-            duration = item['contentDetails']['duration']
-            
-            # Handle different duration formats
-            duration_str = ""
             try:
-                duration_str = str(datetime.datetime.strptime(duration, 'PT%HH%MM%SS').time())
-            except ValueError:
+                logger.info(f"Processing video ID: {item['id']}")
+                
+                video_id = item['id']
+                snippet = item['snippet']
+                thumbnails = snippet['thumbnails']
+                duration = item['contentDetails']['duration']
+                logger.debug(f"Raw duration format: {duration}")
+                
+                # Handle different duration formats
+                duration_str = ""
+                logger.info("Attempting to parse duration")
                 try:
-                    duration_str = str(datetime.datetime.strptime(duration, 'PT%MM%SS').time())
-                except ValueError:
-                    try:
-                        duration_str = str(datetime.datetime.strptime(duration, 'PT%HH%SS').time())
-                    except ValueError:
-                        duration_str = duration  # Fallback to the original duration string if parsing fails
+                    if duration == "P0D":
+                        duration_str = "0:00:00"
+                        logger.debug("Handling P0D duration format")
+                    else:
+                        # Parse ISO 8601 duration format
+                        match = re.match(r'PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?', duration)
+                        if match:
+                            hours = int(match.group(1) or 0)
+                            minutes = int(match.group(2) or 0)
+                            seconds = int(match.group(3) or 0)
+                            duration_str = f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+                            logger.debug(f"Parsed ISO 8601 duration: {duration_str}")
+                        else:
+                            logger.warning(f"Could not parse duration format: {duration}")
+                            duration_str = duration
+                except Exception as e:
+                    logger.error(f"Error parsing duration: {str(e)}")
+                    duration_str = duration
 
-            published_date = datetime.datetime.strptime(snippet['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d, %Y')
-            video_details.append({
-                "youtube_url": f"https://www.youtube.com/watch?v={video_id}",
-                "title": snippet['title'],
-                "default_thumbnail": thumbnails['maxres'] ['url'] if 'maxres' in thumbnails else thumbnails['high']['url'], 
-                "medium_thumbnail": thumbnails['medium']['url'],
-                "channel_name": snippet['channelTitle'],
-                "published_date": published_date,
-                "duration": duration_str
-            })
-       # print(video_details)
+                published_date = datetime.datetime.strptime(snippet['publishedAt'], '%Y-%m-%dT%H:%M:%SZ').strftime('%b %d, %Y')
+                logger.debug(f"Formatted published date: {published_date}")
+                
+                # Check for thumbnail availability
+                thumbnail_url = None
+                if 'maxres' in thumbnails:
+                    thumbnail_url = thumbnails['maxres']['url']
+                    logger.debug("Using maxres thumbnail")
+                elif 'high' in thumbnails:
+                    thumbnail_url = thumbnails['high']['url']
+                    logger.debug("Using high thumbnail")
+                else:
+                    logger.warning("No high-quality thumbnail found")
+                
+                video_details.append({
+                    "youtube_url": f"https://www.youtube.com/watch?v={video_id}",
+                    "title": snippet['title'],
+                    "default_thumbnail": thumbnail_url,
+                    "medium_thumbnail": thumbnails['medium']['url'],
+                    "channel_name": snippet['channelTitle'],
+                    "published_date": published_date,
+                    "duration": duration_str
+                })
+                logger.info(f"Successfully processed video ID: {video_id}")
+                
+            except KeyError as ke:
+                logger.error(f"KeyError while processing video details: {ke}")
+                logger.error(f"Item structure: {item}")
+                continue
+                
+        logger.info(f"Successfully processed {len(video_details)} videos")
         return jsonify(video_details), 200
+        
     except Exception as e:
-        print("Exception occurred:", str(e))
+        logger.error(f"Exception occurred: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         return jsonify({"error": str(e)}), 500
-    
-    
+
 @app.route('/api/get_total_time_saved', methods=['POST'])
 def get_total_time_saved():
     data = request.get_json()
@@ -698,13 +742,17 @@ def with_db_connection(f):
     return wrapper
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
-def get_transcript_with_retries(video_id, proxies_list):
-    """Retry wrapper for transcript fetching"""
-    try:
-        return get_transcript_with_rotation(video_id, proxies_list)
-    except Exception as e:
-        logger.error(f"Error fetching transcript: {str(e)}")
-        raise
+def get_transcript_with_retries(video_id, proxies, max_retries=4):
+    """Get transcript with multiple retries using proxy"""
+    for i in range(max_retries):
+        try:
+            transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxies)
+            return ' '.join([entry['text'] for entry in transcript])
+        except Exception as e:
+            logger.error(f"Proxy request failed: {str(e)}")
+            if i == max_retries - 1:
+                raise e
+            continue
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=4, max=10))
 def process_openai_request(prompt, apimodel):
@@ -720,13 +768,14 @@ def process_openai_request(prompt, apimodel):
 def process_video(conn):
     """Process YouTube video and generate summary"""
     try:
-        # Validate input data
+        logger.info("Starting process_video")
         data = request.get_json()
         if not data:
             return jsonify({"error": "No data sent"}), 400
 
-        #print("DATA")
-        #print(data)
+        logger.info(f"Received data type: {type(data)}")
+        logger.info(f"Data keys: {data.keys()}")
+
         # Extract and validate required fields
         required_fields = {
             'youtube_url': data.get('youtube_url'),
@@ -734,22 +783,26 @@ def process_video(conn):
             'user_id': data.get('user_id')
         }
         
-        missing_fields = [field for field, value in required_fields.items() if not value]
-        if missing_fields:
-            return jsonify({"error": f"Missing required fields: {', '.join(missing_fields)}"}), 400
+        logger.info(f"Required fields: {required_fields}")
+        
+        video_id = data.get('video_id')
+        logger.info(f"Extracted video_id: {video_id}")
 
-        video_id = extract_video_id(required_fields['youtube_url'])
-        if not video_id:
-            return jsonify({"error": "Invalid YouTube URL"}), 400
 
-        # Process video link
+
+        # Create link_data dictionary
         link_data = {
             'user_id': required_fields['user_id'],
-            'video_url': required_fields['youtube_url'],
+            'video_url': required_fields['youtube_url']
         }
-        
+
+        # Check if video exists and get processed data
         try:
+            print("*******************************HERE")
             exists, response = get_or_process_video_link(link_data, conn)
+            print("*******************************HERE")
+            print(exists)
+            print(response)
             logger.info(f"Video exists in database: {exists}")
         except Exception as e:
             logger.error(f"Database operation failed: {str(e)}")
@@ -758,42 +811,106 @@ def process_video(conn):
         # Handle existing video case
         if exists:
             try:
-                combined_text = get_transcript_with_retries(video_id, proxies_list)
+                print("<<<<<<<<< Video already exists >>>>>>>>>")
+                print(f"Video ID: {video_id}")
+                combined_text = get_transcript_with_rotation(video_id, proxies_list)
                 chroma_path = generate_data_store(combined_text)
                 response.update({"chroma_path": chroma_path})
+                print(response)
                 return jsonify(response), 200
             except Exception as e:
                 logger.error(f"Error processing existing video: {str(e)}")
                 return jsonify({"error": "Failed to process existing video"}), 500
+        else:
+            try:
+                #print("Transcribing video...")
+                combined_texts = get_transcript_with_rotation(video_id, proxies_list)
+                #print("Transcript loading to chromaDB:")
+                chroma_path = generate_data_store(combined_texts)
+                #print("Transcript loaded to chromaDB")
+                prompt_0 = ""
+                prompt_1 = ""
+                prompt_2 = ""
+                prompt_3 = ""
+                #print("combined_texts", combined_texts)
+                if len(combined_texts) > 900:
+                    first_split_index = len(combined_texts) // 3
+                    second_split_index = 2 * len(combined_texts) // 3
+                    first_part_json = combined_texts[:first_split_index]
+                    second_part_json = combined_texts[first_split_index:second_split_index]
+                    third_part_json = combined_texts[second_split_index:]
 
-        # Handle new video case
+                    combined_text_1 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in first_part_json]
+
+                    combined_text_2 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in second_part_json]
+
+                    combined_text_3 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in third_part_json]
+
+                    combined_text_1 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_1]
+
+                    combined_text_2 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_2]
+
+                    combined_text_3 = [{
+                        "text": remove_fillers(item["text"]),
+                        "start_time": item["start"]
+                    } for item in combined_text_3]
+
+                    prompt_1 = f"""Given the following Transcript: "{combined_text_1}" """
+                    prompt_1 = prompt_1 + structured_prompt
+                    prompt_2 = f"""Given the following Transcript: "{combined_text_2}" """
+                    prompt_2 = prompt_2 + structured_prompt
+                    prompt_3 = f"""Given the following Transcript: "{combined_text_3}" """
+                    prompt_3 = prompt_3 + structured_prompt
+                else:
+                    combined_text_0 = [{
+                        key: value
+                        for key, value in item.items() if key != "duration"
+                    } for item in combined_texts]
+                    prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
+                    
+            except TranscriptsDisabled:
+                return jsonify({"error": "Transcripts are disabled for this video."}), 400
+            except NoTranscriptFound:
+                return jsonify({"error": "No transcript found for this video."}), 404
+
         try:
-            # Get transcript
-            combined_texts = get_transcript_with_retries(video_id, proxies_list)
-            chroma_path = generate_data_store(combined_texts)
-
-            # Process transcript based on length
+       
+       
             answer = process_transcript(combined_texts, data.get('videoTitle'))
-
-            # Build and return response
+            
+            logger.info("Building response")
             response = {
                 "summary": answer,
                 "chroma_path": chroma_path
             }
-            
+            print(response)
             increment_url_count(required_fields['user_id'], conn)
             return jsonify(response), 200
 
-        except TranscriptsDisabled:
-            return jsonify({"error": "Transcripts are disabled for this video"}), 400
-        except NoTranscriptFound:
-            return jsonify({"error": "No transcript found for this video"}), 404
         except Exception as e:
-            logger.error(f"Error processing new video: {str(e)}")
-            return jsonify({"error": "Failed to process video"}), 500
+            logger.error(f"Error in transcript processing: {str(e)}")
+            logger.error(f"Error type: {type(e)}")
+            logger.error(f"Error traceback: {traceback.format_exc()}")
+            raise
 
     except Exception as e:
-        logger.error(f"Unexpected error: {str(e)}")
+        logger.error(f"Unexpected error in process_video: {str(e)}")
+        logger.error(f"Error traceback: {traceback.format_exc()}")
         return jsonify({"error": "An unexpected error occurred"}), 500
 
 def process_transcript(combined_texts, video_title):
@@ -903,6 +1020,7 @@ def insert_youtube_video():
 
         # Handle video summary
         video_summary = data.get('video_summary_json')
+        print(f"video_summary")
         if video_summary:
             video_summary = json.dumps(video_summary) if not isinstance(video_summary, str) else video_summary
 
@@ -1030,20 +1148,44 @@ def make_proxied_request(url, proxies_list):
     """
     Make a request using a rotating proxy list
     """
-    for proxy in proxies_list:
-        try:
-            response = requests.get(url, proxies=proxy, timeout=10)
-            if response.status_code == 200:
-                return response
-        except Exception as e:
-            logger.error(f"Proxy request failed: {str(e)}")
-            continue
-    
-    # If all proxies fail, try without proxy
+    logger.info("Starting make_proxied_request")
+    logger.info(f"URL: {url}")
+    logger.info(f"Proxies list type: {type(proxies_list)}")
+    logger.info(f"Proxies list content: {proxies_list}")
+
     try:
+        # Convert single proxy dict to list if needed
+        if isinstance(proxies_list, dict):
+            proxies = [proxies_list]
+            logger.info("Converting single proxy dict to list")
+        elif isinstance(proxies_list, str):
+            logger.warning(f"Received string instead of proxy dict/list: {proxies_list}")
+            # Handle string proxy by converting to proper format
+            proxies = [{"http": proxies_list, "https": proxies_list}]
+        else:
+            proxies = proxies_list
+        
+        logger.info(f"Processed proxies: {proxies}")
+
+        for proxy in proxies:
+            try:
+                logger.info(f"Attempting request with proxy: {proxy}")
+                response = requests.get(url, proxies=proxy, timeout=10)
+                logger.info(f"Proxy request status code: {response.status_code}")
+                if response.status_code == 200:
+                    return response
+            except Exception as e:
+                logger.error(f"Proxy request failed: {str(e)}")
+                logger.error(f"Proxy that failed: {proxy}")
+                continue
+        
+        # If all proxies fail, try without proxy
+        logger.warning("All proxies failed, attempting request without proxy")
         return requests.get(url)
+        
     except Exception as e:
-        logger.error(f"Direct request failed: {str(e)}")
+        logger.error(f"Request failed completely: {str(e)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
         raise
 
 if __name__ == '__main__':

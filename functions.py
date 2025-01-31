@@ -1,5 +1,8 @@
 def combine_jsons(json1, json2, json3):
   # Combine summaries with specified transitions
+  #print(json1)
+  #print(json2)
+  #print(json3)
   
   summaries = []
   combined_summary = ''
@@ -14,9 +17,9 @@ def combine_jsons(json1, json2, json3):
   def remove_first_sentence(s):
       period_index = s.find('.')  # Find the first period
       if period_index != -1:  # If there is at least one period
-          return s[period_index + 1:].strip()  
+          return s[period_index + 1:].strip()  # Return the string after the first period, stripped of leading whitespace
       else:
-          return s  
+          return s  # Return the original string if no period found
   
   if len(summaries) >= 3:
       # Remove the first sentence from summaries[1] and summaries[2]
@@ -36,7 +39,6 @@ def combine_jsons(json1, json2, json3):
       'summary': combined_summary,
       'reliability_score': max(json1.get('reliability_score', 0), json2.get('reliability_score', 0), json3.get('reliability_score', 0)),
       'sentiment_analysis': [json1.get('sentiment_analysis', '')],
-      'click_bait_score': json1.get('click_bait_score', ''),
       #'sentiment_analysis': " & ".join(filter(None, [json1.get('sentiment_analysis', ''), json3.get('sentiment_analysis', '')])),
 
   }
@@ -83,6 +85,3 @@ def combine_jsons(json1, json2, json3):
   #print('combined_json')
   #print(combined_json)
   return combined_json
-
-
-

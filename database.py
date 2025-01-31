@@ -13,7 +13,7 @@ from psycopg2.pool import ThreadedConnectionPool
 # Load environment variables from .env file
 load_dotenv()
 
-ENV = 'e1'
+ENV = 'e2'
 
 if ENV =="e1":
     db_user = "postgres"
@@ -102,7 +102,7 @@ def upsert_user(user_data, conn):
     # Ensure all required keys are present and properly set in user_data
     required_keys = [
         'user_ip', 'firebase_uid', 'name', 'display_name', 'email', 'email_verified',
-        'photo_url', 'signup_datetime', 'last_login_datetime', 'active', 'free_trial', 'url_count'
+        'photo_url', 'signup_datetime', 'last_login_datetime', 'active', 'free_trial', 
     ]
 
     # Initialize missing fields with None
@@ -131,14 +131,14 @@ def upsert_user(user_data, conn):
 
     # Ensure datetime fields have valid values
     current_time = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-    if not user_data['signup_datetime']:
+    if not user_data.get('signup_datetime'):
         user_data['signup_datetime'] = current_time
-    if not user_data['last_login_datetime']:
+    if not user_data.get('last_login_datetime'):
         user_data['last_login_datetime'] = current_time
+    elif isinstance(user_data['last_login_datetime'], datetime):
+        user_data['last_login_datetime'] = user_data['last_login_datetime'].strftime('%Y-%m-%d %H:%M:%S')
 
-    # Initialize url_count if not present or None
-    if user_data['url_count'] is None:
-        user_data['url_count'] = 0
+   
 
     # Validate critical data
     if user_data['email'] is None and user_data['user_ip'] is None:
@@ -158,15 +158,15 @@ def upsert_user(user_data, conn):
                     update_query = """
                     UPDATE Users
                     SET user_ip = %s, firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
-                        photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s,
-                        url_count = %s
+                        photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
+                        
                     WHERE user_id = %s
                     """
                     cur.execute(update_query, (
                         user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                         user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
                         user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], 
-                        user_data['url_count'], existing_user_id
+                        existing_user_id
                     ))
                     conn.commit()
                     print(f"Updated existing user {existing_user_id}")
@@ -183,15 +183,14 @@ def upsert_user(user_data, conn):
                         update_query = """
                         UPDATE Users
                         SET firebase_uid = %s, name = %s, display_name = %s, email_verified = %s,
-                            photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s,
-                            url_count = %s
+                            photo_url = %s, signup_datetime = %s, last_login_datetime = %s, active = %s, free_trial = %s
                         WHERE user_id = %s
                         """
                         cur.execute(update_query, (
                             user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                             user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
                             user_data['last_login_datetime'], user_data['active'], user_data['free_trial'],
-                            user_data['url_count'], existing_user_id
+                            existing_user_id
                         ))
                         conn.commit()
                         print(f"Updated existing user {existing_user_id} based on IP")
@@ -205,14 +204,14 @@ def upsert_user(user_data, conn):
             insert_query = """
             INSERT INTO Users (
                 user_ip, firebase_uid, name, display_name, email, email_verified, photo_url, signup_datetime,
-                last_login_datetime, active, free_trial, url_count
+                last_login_datetime, active, free_trial
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """
             cur.execute(insert_query, (
                 user_data['user_ip'], user_data['firebase_uid'], user_data['name'], user_data['display_name'],
                 user_data['email'], user_data['email_verified'], user_data['photo_url'], user_data['signup_datetime'],
-                user_data['last_login_datetime'], user_data['active'], user_data['free_trial'], user_data['url_count']
+                user_data['last_login_datetime'], user_data['active'], user_data['free_trial']
             ))
             conn.commit()
             print("Successfully inserted new user")
@@ -280,6 +279,7 @@ def get_user_id_by_ip(ip, conn):
         return None
 
 def increment_url_count(user_id, conn):
+    print("*******************************Incrementing url count for user_id:", str(user_id))
     try:
         if conn.closed:
             print("Connection is closed. Cannot proceed.")
@@ -316,7 +316,7 @@ def increment_url_count(user_id, conn):
 
 def insert_youtube_link(link_data, conn):
     try:
-       # print(f"Received link_data: {link_data}")
+        #print(f"Received link_data: {link_data}")
         
         check_query = """
         SELECT 1 FROM youtubelinks WHERE video_url = %(video_url)s;
@@ -382,6 +382,7 @@ def store_youtube_link_data(user_id, youtube_url, video_summary):
         put_db_connection(conn)  # Ensure connection is always returned to the pool
 
 def get_or_process_video_link(link_data, conn):
+    print("*******************************Getting or processing video link")
     try:
         # Check if video summary already exists
         check_query = """
