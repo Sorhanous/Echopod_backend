@@ -25,7 +25,6 @@ from functools import wraps
 from tenacity import retry, stop_after_attempt, wait_exponential
 import logging
 import traceback
-import time
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -81,105 +80,38 @@ proxies_list = {
 
 
 def get_transcript_with_rotation(video_id, proxies_list):
-    logger.info("="*50)
-    logger.info("Starting get_transcript_with_rotation")
-    logger.info(f"Input - video_id: {video_id}")
-    logger.info(f"Input - proxies_list type: {type(proxies_list)}")
-    logger.info(f"Input - proxies_list content: {proxies_list}")
-    
-    # Validate video_id
-    if not video_id or not isinstance(video_id, str):
-        logger.error(f"❌ Invalid video_id: {video_id}")
-        logger.error(f"❌ video_id type: {type(video_id)}")
-        raise ValueError("Invalid video ID provided")
-
-    # Clean video_id
-    original_video_id = video_id
-    video_id = video_id.replace('https://www.youtube.com/watch?v=', '')
-    video_id = video_id.replace('https://youtu.be/', '')
-    video_id = video_id.split('&')[0]
-    
-    logger.info(f"Video ID cleaning:")
-    logger.info(f"  Original: {original_video_id}")
-    logger.info(f"  Cleaned: {video_id}")
-
-    # Format proxies
-    if isinstance(proxies_list, dict):
-        proxies = [proxies_list]
-        logger.info("Converting single proxy dict to list")
-    else:
-        proxies = proxies_list
-    logger.info(f"Formatted proxies: {json.dumps(proxies, indent=2)}")
-
-    last_error = None
-    max_retries = 3
-    
-    logger.info(f"Starting transcript retrieval with {max_retries} max retries")
-    
-    # Try each proxy with retries
-    for attempt in range(max_retries):
-        logger.info(f"\nAttempt {attempt + 1}/{max_retries}")
+    print("get_transcript_with_rotation")
+    print("video_id::::")
+    print(video_id)
+    try:
+        proxies = [proxies_list] if isinstance(proxies_list, dict) else proxies_list
+        logger.info(f"Proxies type: {type(proxies)}")
         
-        for proxy_index, proxy in enumerate(proxies):
-            logger.info(f"  Trying proxy {proxy_index + 1}/{len(proxies)}: {proxy}")
-            
+        for proxy in proxies:
             try:
-                logger.info("  Calling YouTubeTranscriptApi.get_transcript...")
-                start_time = time.time()
+                logger.info(f"Trying proxy: {proxy}")
+                print("video_id")
+                print(video_id)
                 transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxy)
-                end_time = time.time()
+                logger.info(f"Raw transcript type: {type(transcript)}")
+                logger.info(f"First item of raw transcript: {transcript[0] if transcript else 'empty'}")
                 
-                logger.info(f"  ✅ Transcript retrieved in {end_time - start_time:.2f} seconds")
-                logger.info(f"  Transcript type: {type(transcript)}")
-                logger.info(f"  Transcript length: {len(transcript) if transcript else 0}")
-                
-                if not transcript or not isinstance(transcript, list):
-                    logger.warning("  ⚠️ Retrieved empty or invalid transcript")
-                    continue
-
-                # Format transcript
-                logger.info("  Formatting transcript...")
-                formatted_transcript = [{
-                    'text': item.get('text', ''),
-                    'start': item.get('start', 0)
-                } for item in transcript]
-
-                logger.info(f"  ✅ Successfully formatted {len(formatted_transcript)} transcript entries")
-                logger.info("  Sample entry:")
-                logger.info(f"    {json.dumps(formatted_transcript[0] if formatted_transcript else {}, indent=2)}")
-                logger.info("="*50)
-                
-                return formatted_transcript
-
-            except TranscriptsDisabled as e:
-                logger.error(f"  ❌ Transcripts disabled: {str(e)}")
-                logger.error(f"  Stack trace:\n{traceback.format_exc()}")
-                raise
-                
-            except NoTranscriptFound as e:
-                logger.error(f"  ❌ No transcript found: {str(e)}")
-                logger.error(f"  Stack trace:\n{traceback.format_exc()}")
-                raise
+                if transcript and isinstance(transcript, list):
+                    formatted_transcript = [{
+                        'text': item.get('text', ''),
+                        'start': item.get('start', 0)
+                    } for item in transcript]
+                    logger.info("Successfully formatted transcript")
+                    return formatted_transcript
                 
             except Exception as e:
-                logger.error(f"  ❌ Proxy attempt failed: {str(e)}")
-                logger.error(f"  Error type: {type(e)}")
-                logger.error(f"  Stack trace:\n{traceback.format_exc()}")
-                last_error = e
+                logger.error(f"Proxy attempt failed: {str(e)}")
                 continue
-
-        logger.warning(f"⚠️ All proxies failed on attempt {attempt + 1}")
-        
-    # If we get here, all attempts failed
-    logger.error("❌ All transcript retrieval attempts failed")
-    if last_error:
-        logger.error(f"Last error: {str(last_error)}")
-        logger.error(f"Last error type: {type(last_error)}")
-        logger.error(f"Final stack trace:\n{traceback.format_exc()}")
-        raise last_error
-    else:
-        logger.error("No specific error captured")
-        raise Exception("Failed to retrieve transcript after all attempts")
+                
+    except Exception as e:
+        logger.error(f"Transcript retrieval failed: {str(e)}")
+        logger.error(f"Error traceback: {traceback.format_exc()}")
+        raise
 
 client = openai.OpenAI(api_key=OPENAI_API_KEY)
 client_2 = openai.OpenAI(api_key=OPENAI_API_SECRET_2)
@@ -546,7 +478,7 @@ def extract_video_data():
     data = request.get_json()
     video_id = data.get('video_id')
     user_email = data.get('user_email')
-    logger.info(f"Extracted video_id: {video_id}")
+    logger.info(f"((((((((((((((((Extracted video_id************************: {video_id}")
     
     if not video_id:
         return jsonify({"error": "video_id is required"}), 400
@@ -836,6 +768,7 @@ def process_openai_request(prompt, apimodel):
 @app.route('/api/process_video', methods=['POST'])
 @with_db_connection
 def process_video(conn):
+    """Process YouTube video and generate summary"""
     try:
         logger.info("Starting process_video")
         data = request.get_json()
@@ -853,9 +786,14 @@ def process_video(conn):
         }
         
         logger.info(f"Required fields: {required_fields}")
-        
-        video_id = data.get('video_id')
-        logger.info(f"Extracted video_id: {video_id}")
+        youtube_url = data.get('youtube_url')
+        if not youtube_url:
+            return jsonify({"error": "YouTube URL is required."}), 400
+
+        video_id = extract_video_id(youtube_url)
+        #print(video_id)
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL."}), 400
 
 
 
@@ -894,10 +832,9 @@ def process_video(conn):
             try:
                 #print("Transcribing video...")
                 combined_texts = get_transcript_with_rotation(video_id, proxies_list)
-                if not combined_texts:
-                    raise ValueError("No transcript data received")
-                
+                #print("Transcript loading to chromaDB:")
                 chroma_path = generate_data_store(combined_texts)
+                #print("Transcript loaded to chromaDB")
                 prompt_0 = ""
                 prompt_1 = ""
                 prompt_2 = ""
@@ -953,15 +890,10 @@ def process_video(conn):
                     } for item in combined_texts]
                     prompt_0 = f"Given the following Transcript: {combined_text_0} " + structured_prompt
                     
-            except (TranscriptsDisabled, NoTranscriptFound) as e:
-                logger.error(f"Transcript not available: {str(e)}")
-                return jsonify({"error": str(e)}), 404
-            except ValueError as e:
-                logger.error(f"Validation error: {str(e)}")
-                return jsonify({"error": str(e)}), 400
-            except Exception as e:
-                logger.error(f"Unexpected error getting transcript: {str(e)}")
-                return jsonify({"error": "Failed to process video transcript"}), 500
+            except TranscriptsDisabled:
+                return jsonify({"error": "Transcripts are disabled for this video."}), 400
+            except NoTranscriptFound:
+                return jsonify({"error": "No transcript found for this video."}), 404
 
         try:
        
@@ -1047,9 +979,40 @@ def create_prompt(split):
     return f"""Given the following Transcript: "{split}" """ + structured_prompt
 
 def extract_video_id(youtube_url):
-    reg_exp = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
-    match = re.match(reg_exp, youtube_url)
-    return match.group(1) if match else None
+    """
+    Extract video ID from various YouTube URL formats including mobile URLs.
+    Args:
+        youtube_url (str): YouTube URL to process
+    Returns:
+        str or None: Video ID if found, None otherwise
+    """
+    # Normalize the URL: trim whitespace and convert mobile URLs
+    if not youtube_url:
+        return None
+        
+    normalized_url = youtube_url.strip().replace('://m.', '://')
+    
+    # Regular expressions for different YouTube URL formats
+    youtube_patterns = [
+        # Standard watch URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:[&?].*)?$',
+        # Short URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})(?:\?.*)?$',
+        # Mobile URLs
+        r'(?:https?:\/\/)?m\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:[&?].*)?$',
+        # Embed URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?.*)?$',
+        # Shortened URLs with attribution
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/attribution_link\?.*v%3D([a-zA-Z0-9_-]{11}).*$'
+    ]
+    
+    # Try each pattern until we find a match
+    for pattern in youtube_patterns:
+        match = re.search(pattern, normalized_url)
+        if match:
+            return match.group(1)
+            
+    return None
 
 @app.route('/api/videos', methods=['GET'])
 def get_videos():
