@@ -80,7 +80,9 @@ proxies_list = {
 
 
 def get_transcript_with_rotation(video_id, proxies_list):
-    logger.info("Starting get_transcript_with_rotation")
+    print("get_transcript_with_rotation")
+    print("video_id::::")
+    print(video_id)
     try:
         proxies = [proxies_list] if isinstance(proxies_list, dict) else proxies_list
         logger.info(f"Proxies type: {type(proxies)}")
@@ -476,7 +478,7 @@ def extract_video_data():
     data = request.get_json()
     video_id = data.get('video_id')
     user_email = data.get('user_email')
-    logger.info(f"Extracted video_id: {video_id}")
+    logger.info(f"((((((((((((((((Extracted video_id************************: {video_id}")
     
     if not video_id:
         return jsonify({"error": "video_id is required"}), 400
@@ -785,9 +787,14 @@ def process_video(conn):
         }
         
         logger.info(f"Required fields: {required_fields}")
-        
-        video_id = data.get('video_id')
-        logger.info(f"Extracted video_id: {video_id}")
+        youtube_url = data.get('youtube_url')
+        if not youtube_url:
+            return jsonify({"error": "YouTube URL is required."}), 400
+
+        video_id = extract_video_id(youtube_url)
+        #print(video_id)
+        if not video_id:
+            return jsonify({"error": "Invalid YouTube URL."}), 400
 
 
 
@@ -973,9 +980,40 @@ def create_prompt(split):
     return f"""Given the following Transcript: "{split}" """ + structured_prompt
 
 def extract_video_id(youtube_url):
-    reg_exp = r'(?:https?:\/\/)?(?:www\.)?(?:youtube\.com\/(?:[^\/\n\s]+\/\S+\/|(?:v|e(?:mbed)?)\/|\S*?[?&]v=)|youtu\.be\/)([a-zA-Z0-9_-]{11})'
-    match = re.match(reg_exp, youtube_url)
-    return match.group(1) if match else None
+    """
+    Extract video ID from various YouTube URL formats including mobile URLs.
+    Args:
+        youtube_url (str): YouTube URL to process
+    Returns:
+        str or None: Video ID if found, None otherwise
+    """
+    # Normalize the URL: trim whitespace and convert mobile URLs
+    if not youtube_url:
+        return None
+        
+    normalized_url = youtube_url.strip().replace('://m.', '://')
+    
+    # Regular expressions for different YouTube URL formats
+    youtube_patterns = [
+        # Standard watch URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:[&?].*)?$',
+        # Short URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtu\.be\/([a-zA-Z0-9_-]{11})(?:\?.*)?$',
+        # Mobile URLs
+        r'(?:https?:\/\/)?m\.youtube\.com\/watch\?v=([a-zA-Z0-9_-]{11})(?:[&?].*)?$',
+        # Embed URLs
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/embed\/([a-zA-Z0-9_-]{11})(?:\?.*)?$',
+        # Shortened URLs with attribution
+        r'(?:https?:\/\/)?(?:www\.)?youtube\.com\/attribution_link\?.*v%3D([a-zA-Z0-9_-]{11}).*$'
+    ]
+    
+    # Try each pattern until we find a match
+    for pattern in youtube_patterns:
+        match = re.search(pattern, normalized_url)
+        if match:
+            return match.group(1)
+            
+    return None
 
 @app.route('/api/videos', methods=['GET'])
 def get_videos():
