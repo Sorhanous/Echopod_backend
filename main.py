@@ -88,9 +88,9 @@ def get_transcript_with_rotation(video_id, proxies_list):
         for proxy in proxies:
             try:
                 logger.info(f"Trying proxy: {proxy}")
-                print("video_id")
+                print("video_id #######################################################################")
                 print(video_id)
-                transcript = YouTubeTranscriptApi.get_transcript(video_id, proxies=proxy)
+                transcript = YouTubeTranscriptApi.get_transcript(str(video_id), proxies=proxy)
                 logger.info(f"Raw transcript type: {type(transcript)}")
                 logger.info(f"First item of raw transcript: {transcript[0] if transcript else 'empty'}")
                 
@@ -514,6 +514,7 @@ def extract_video_data():
             print(f"Duration in seconds: {duration_seconds}")
             if user_email:
                 conn = get_db_connection()
+
                 update_total_time_saved(user_email, duration_seconds, conn)
             result = {
                 "title": snippet.get("title"),
@@ -1073,7 +1074,12 @@ def insert_youtube_video():
 
 @app.route('/api/get-user-id', methods=['POST'])
 def get_user_id():
-    print("\n=== Starting get-user-id API call ===")
+    print("""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""")
+    print("""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""")
+    print("""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""")
+    print("""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""""")
+
+    print("=== Starting get-user-id API call ===")
     
     # Log incoming request data
     data = request.get_json()
@@ -1189,4 +1195,4 @@ def make_proxied_request(url, proxies_list):
         raise
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=8080)
+    app.run(host='0.0.0.0', port=8080 , debug=True)

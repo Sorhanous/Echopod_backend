@@ -13,7 +13,7 @@ from psycopg2.pool import ThreadedConnectionPool
 # Load environment variables from .env file
 load_dotenv()
 
-ENV = 'e2'
+ENV = 'e1'
 
 if ENV =="e1":
     db_user = "postgres"
@@ -475,6 +475,8 @@ def get_total_time_saved_by_email(user_email, conn):
         with conn.cursor() as cur:
             cur.execute(query, (user_email,))
             total_time_saved = cur.fetchone()
+            print("&&&&&&&&&&&&&&&&&&&&7total time save pulled from database&&&&&&&&&&&&&&&&&&&&&&&&&&")
+            print(total_time_saved)
         return total_time_saved[0] if total_time_saved else None
     except psycopg2.DatabaseError as e:
         print(f"Database error: {e}")
